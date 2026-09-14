@@ -1411,9 +1411,9 @@ function BurrowApp() {
     }
   };
 
-  const finishEditing = async () => {
-    if (endingEditing) return;
-    const stateAtFinish = workspaceData;
+  const finishEditing = async (stateOverride?: WorkspaceData) => {
+    if (endingEditing) return false;
+    const stateAtFinish = stateOverride ?? workspaceRef.current;
     const serialized = JSON.stringify(stateAtFinish);
     setEndingEditing(true);
     try {
@@ -1426,10 +1426,13 @@ function BurrowApp() {
         lastSyncedJsonRef.current = serialized;
         dirtyRef.current = false;
       }
+      workspaceRef.current = stateAtFinish;
       await fetch("/api/password", { method: "DELETE" });
       enterReadOnlyMode();
+      return true;
     } catch {
       setSaveState("保存に失敗しました。編集モードを終了していません");
+      return false;
     } finally {
       setEndingEditing(false);
     }
@@ -1966,8 +1969,8 @@ function BurrowApp() {
     setSearchQuery("");
   };
 
-  const openYear = (year: number) => {
-    const projects = workspaceData.projects.filter((project) => project.year === year);
+  const activateYear = (year: number, source = workspaceRef.current) => {
+    const projects = source.projects.filter((project) => project.year === year);
     if (!projects.length) return;
     const storedProjectId = loadActiveProjectId();
     const project = projects.find((item) => item.id === storedProjectId) ?? projects[0];
@@ -1979,23 +1982,29 @@ function BurrowApp() {
     resetProjectView(project.data);
   };
 
-  const createYearPage = (year: number) => {
+  const openYear = async (year: number) => {
+    if (endingEditing) return;
+    if (!isReadOnly && !(await finishEditing())) return;
+    activateYear(year);
+  };
+
+  const createYearPage = async (year: number) => {
     if (!Number.isInteger(year) || year < 1900 || year > 2100 || isReadOnly) return;
     if (workspaceData.projects.some((project) => project.year === year)) {
-      openYear(year);
+      await openYear(year);
       return;
     }
     const project = createProject("区画 1", createEmptyData(), year);
-    setWorkspaceData((current) => ({ projects: [...current.projects, project] }));
-    setActiveYear(year);
-    setActiveProjectId(project.id);
-    persistActiveProjectId(project.id);
-    setMapHistory([]);
-    setMapFuture([]);
-    resetProjectView(project.data);
+    const nextState = { projects: [...workspaceRef.current.projects, project] };
+    workspaceRef.current = nextState;
+    setWorkspaceData(nextState);
+    if (!(await finishEditing(nextState))) return;
+    activateYear(year, nextState);
   };
 
-  const returnToYearList = () => {
+  const returnToYearList = async () => {
+    if (endingEditing) return;
+    if (!isReadOnly && !(await finishEditing())) return;
     setActiveYear(null);
     setMapHistory([]);
     setMapFuture([]);
@@ -2120,6 +2129,7 @@ function BurrowApp() {
       onSubmit={unlockEditing}
       password={editPassword}
       submitting={editPasswordSubmitting}
+      title={activeYear === null ? "年一覧を編集" : "マップを編集"}
     />
   ) : null;
   const deleteYearDialog = deleteYearTarget ? (
@@ -2212,7 +2222,7 @@ function BurrowApp() {
             ) : null}
           </div>
           <div className="topbar-actions">
-            <button className="year-list-button" onClick={returnToYearList} type="button">
+            <button className="year-list-button" disabled={endingEditing} onClick={returnToYearList} type="button">
               年一覧へ
             </button>
             <button
@@ -2966,6 +2976,7 @@ function EditPasswordDialog({
   onSubmit,
   password,
   submitting,
+  title,
 }: {
   message: string;
   onCancel: () => void;
@@ -2973,12 +2984,13 @@ function EditPasswordDialog({
   onSubmit: (event: ReactFormEvent<HTMLFormElement>) => void;
   password: string;
   submitting: boolean;
+  title: string;
 }) {
   return (
     <div className="edit-password-overlay" role="presentation">
       <section aria-labelledby="edit-password-title" aria-modal="true" className="edit-password-dialog" role="dialog">
         <p className="eyebrow">編集モード</p>
-        <h2 id="edit-password-title">パスワードを入力</h2>
+        <h2 id="edit-password-title">{title}</h2>
         <p>閲覧はそのまま可能です。編集する場合だけパスワードが必要です。</p>
         <form onSubmit={onSubmit}>
           <label htmlFor="edit-password">パスワード</label>
@@ -3226,10 +3238,10 @@ function YearSelection({
 }: {
   endingEditing: boolean;
   isReadOnly: boolean;
-  onCreate: (year: number) => void;
+  onCreate: (year: number) => void | Promise<void>;
   onDeleteRequest: (summary: YearSummary) => void;
-  onFinishEditing: () => Promise<void>;
-  onOpen: (year: number) => void;
+  onFinishEditing: () => Promise<boolean>;
+  onOpen: (year: number) => void | Promise<void>;
   onRequestEditing: () => void;
   summaries: YearSummary[];
 }) {
