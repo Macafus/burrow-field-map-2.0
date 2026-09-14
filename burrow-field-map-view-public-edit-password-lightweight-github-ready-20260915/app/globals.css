@@ -2181,6 +2181,7 @@ tbody tr.no-results:hover {
     font-size: 9px;
   }
 
+  .topbar,
   .search-field,
   .topbar-actions,
   .project-switcher,
@@ -2337,9 +2338,8 @@ tbody tr.no-results:hover {
     min-height: 0;
     overflow: hidden;
     grid-template-columns: minmax(0, 1fr) 86mm;
-    grid-template-rows: 11mm 5mm auto 13mm minmax(0, 1fr);
+    grid-template-rows: 5mm auto 13mm minmax(0, 1fr);
     grid-template-areas:
-      "header header"
       "meta meta"
       "note note"
       "summary summary"
@@ -2348,10 +2348,6 @@ tbody tr.no-results:hover {
     row-gap: 1mm;
     break-after: avoid;
     break-inside: avoid;
-  }
-
-  .print-mode-full .topbar {
-    grid-area: header;
   }
 
   .print-mode-full .print-meta {
