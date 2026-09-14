@@ -992,10 +992,14 @@ function BurrowApp() {
     };
 
     render();
+    const animationFrame = window.requestAnimationFrame(render);
     const observer = new ResizeObserver(render);
     observer.observe(map);
-    return () => observer.disconnect();
-  }, [data.strokes, selectedStrokeId]);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+    };
+  }, [activeProjectId, activeYear, data.strokes, selectedStrokeId]);
 
   const selectedBurrow = useMemo(
     () => data.burrows.find((burrow) => burrow.uid === selectedBurrowUid),
