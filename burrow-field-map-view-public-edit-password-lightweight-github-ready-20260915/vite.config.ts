@@ -1,41 +1,37 @@
 import vinext from "vinext";
 import { defineConfig, loadEnv } from "vite";
-import hostingConfig from "./.openai/hosting.json";
-import { sites } from "./build/sites-vite-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
-
-const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 export default defineConfig(async ({ mode }) => {
   const localEnv = loadEnv(mode, process.cwd(), "");
+  const databaseId =
+    localEnv.D1_DATABASE_ID ??
+    process.env.D1_DATABASE_ID ??
+    SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
   const localBindingConfig = {
     main: "./worker/index.ts",
     compatibility_flags: ["nodejs_compat"],
-    vars: {
-      APP_PASSWORD: localEnv.APP_PASSWORD ?? process.env.APP_PASSWORD ?? "",
-    },
-    d1_databases: d1
-      ? [
-          {
-            binding: d1,
-            database_name: "site-creator-d1",
-            database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
-          },
-        ]
-      : [],
-    r2_buckets: r2
-      ? [
-          {
-            binding: r2,
-            bucket_name: "site-creator-r2",
-          },
-        ]
-      : [],
+    keep_vars: true,
+    vars:
+      mode === "development"
+        ? {
+            APP_PASSWORD:
+              localEnv.APP_PASSWORD ?? process.env.APP_PASSWORD ?? "",
+          }
+        : {},
+    d1_databases: [
+      {
+        binding: "DB",
+        database_name: "site-creator-d1",
+        database_id: databaseId,
+      },
+    ],
+    r2_buckets: [],
   };
 
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
@@ -53,7 +49,6 @@ export default defineConfig(async ({ mode }) => {
       : undefined,
     plugins: [
       vinext(),
-      sites(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,
