@@ -163,6 +163,42 @@ button {
   line-height: 1.5;
 }
 
+.clear-project-eyebrow,
+.clear-project-warning {
+  color: var(--danger);
+}
+
+.clear-project-warning {
+  margin: 0;
+  border-left: 4px solid var(--danger);
+  padding: 10px 12px;
+  background: #fff4f2;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.65;
+}
+
+.clear-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.clear-project-confirm {
+  min-height: 38px;
+  border: 1px solid var(--danger);
+  border-radius: 7px;
+  padding: 8px 14px;
+  background: var(--danger);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.clear-project-confirm:hover {
+  background: #81302b;
+}
+
 .edit-password-dialog {
   width: min(430px, 100%);
   border: 1px solid var(--line);
@@ -566,23 +602,7 @@ button:disabled {
   background: #f0f8f5;
 }
 
-.read-only-button {
-  min-height: 40px;
-  border: 1px solid #b8c8c1;
-  border-radius: 8px;
-  padding: 8px 13px;
-  background: var(--field);
-  color: var(--accent-strong);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.read-only-button:hover,
-.read-only-button.active {
-  border-color: var(--accent);
-  background: #e9f3f0;
-}
-
+.read-only-button,
 .year-list-button {
   min-height: 40px;
   border: 1px solid var(--accent);
@@ -594,6 +614,8 @@ button:disabled {
   font-weight: 800;
 }
 
+.read-only-button:hover,
+.read-only-button.active,
 .year-list-button:hover {
   background: #dcece7;
 }
@@ -749,6 +771,7 @@ button:disabled {
 
 .project-settings-button,
 .project-copy-button,
+.project-list-button,
 .project-delete-button {
   min-height: 36px;
   border-radius: 6px;
@@ -772,7 +795,13 @@ button:disabled {
   color: var(--accent-strong);
 }
 
-.project-copy-button:hover:not(:disabled) {
+.project-list-button {
+  border: 1px solid #9ebdb6;
+  color: var(--accent-strong);
+}
+
+.project-copy-button:hover:not(:disabled),
+.project-list-button:hover {
   border-color: var(--accent);
   background: #f0f8f5;
 }
@@ -840,6 +869,8 @@ button:disabled {
 }
 
 .summary-item {
+  --summary-color: #ff4b00;
+  --summary-soft: #fff0eb;
   position: relative;
   display: flex;
   min-height: 76px;
@@ -849,6 +880,7 @@ button:disabled {
   padding: 12px 14px;
   flex-direction: column;
   justify-content: space-between;
+  background: linear-gradient(135deg, var(--summary-soft), rgba(255, 254, 248, 0.96));
   text-align: left;
 }
 
@@ -856,28 +888,43 @@ button:disabled {
   position: absolute;
   inset: 0 auto 0 0;
   width: 4px;
-  background: var(--accent);
+  background: var(--summary-color);
   content: "";
 }
 
-.summary-item.tone-female::before {
-  background: var(--female);
+.summary-item:nth-child(1) {
+  --summary-color: #ff4b00;
+  --summary-soft: #fff0eb;
 }
 
-.summary-item.tone-male::before {
-  background: var(--male);
+.summary-item:nth-child(2) {
+  --summary-color: #03af7a;
+  --summary-soft: #eaf9f4;
 }
 
-.summary-item.tone-attached::before {
-  background: var(--logger-attached);
+.summary-item:nth-child(3) {
+  --summary-color: #ff8082;
+  --summary-soft: #fff1f2;
 }
 
-.summary-item.tone-recovered::before {
-  background: var(--logger-recovered);
+.summary-item:nth-child(4) {
+  --summary-color: #4dc4ff;
+  --summary-soft: #ecf9ff;
 }
 
-.summary-item.tone-unrecovered::before {
-  background: var(--logger-attached);
+.summary-item:nth-child(5) {
+  --summary-color: #990099;
+  --summary-soft: #f8eefa;
+}
+
+.summary-item:nth-child(6) {
+  --summary-color: #fff100;
+  --summary-soft: #fffde3;
+}
+
+.summary-item:nth-child(7) {
+  --summary-color: #005aff;
+  --summary-soft: #edf3ff;
 }
 
 .summary-item span {
@@ -901,8 +948,8 @@ button:disabled {
 }
 
 .summary-button.active {
-  outline: 3px solid rgba(30, 109, 104, 0.18);
-  box-shadow: 0 14px 36px rgba(32, 35, 31, 0.1), inset 0 0 0 1px rgba(30, 109, 104, 0.22);
+  outline: 3px solid color-mix(in srgb, var(--summary-color) 24%, transparent);
+  box-shadow: 0 14px 36px rgba(32, 35, 31, 0.1), inset 0 0 0 1px var(--summary-color);
 }
 .main-grid {
   display: grid;
@@ -1007,6 +1054,17 @@ button:disabled {
 
 .danger-button:hover {
   background: #fff6f4;
+}
+
+.clear-map-button {
+  border-color: rgba(161, 61, 54, 0.35);
+  color: var(--danger);
+}
+
+.clear-map-button:hover {
+  border-color: var(--danger);
+  background: #fff6f4;
+  color: var(--danger);
 }
 
 .paper-map {

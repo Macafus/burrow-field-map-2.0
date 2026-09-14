@@ -684,6 +684,7 @@ function BurrowApp() {
   const [printChoiceOpen, setPrintChoiceOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [burrowListOpen, setBurrowListOpen] = useState(false);
+  const [clearProjectOpen, setClearProjectOpen] = useState(false);
   const [saveState, setSaveState] = useState("読み込み中...");
   const [manualReadOnly, setManualReadOnly] = useState(true);
   const [editPasswordOpen, setEditPasswordOpen] = useState(false);
@@ -1999,6 +2000,7 @@ function BurrowApp() {
     setProjectSettingsOpen(false);
     setBurrowListOpen(false);
     setPrintChoiceOpen(false);
+    setClearProjectOpen(false);
   };
 
   const selectProject = (projectId: string) => {
@@ -2009,6 +2011,7 @@ function BurrowApp() {
     persistActiveProjectId(projectId);
     setProjectSettingsOpen(false);
     setBurrowListOpen(false);
+    setClearProjectOpen(false);
     resetProjectView(project.data);
   };
 
@@ -2092,24 +2095,13 @@ function BurrowApp() {
     resetProjectView(nextProject.data);
   };
 
-  const resetDemo = () => {
+  const clearActiveProject = () => {
     if (isReadOnly) return;
-    if (!window.confirm("現在の内容を消して初期例に戻しますか？")) return;
     pushHistory();
-    const sample = createSampleData();
-    setData(sample);
-    setSelectedBurrowUid(sample.burrows[0].uid);
-    setSelectedMemoId("");
-    setSelectedGroupUids([]);
-    setEditingMemoId("");
-    setEraseSelection(null);
-    setGroupSelection(null);
-    eraseSelectionRef.current = null;
-    groupSelectionRef.current = null;
-    groupDragRef.current = null;
-    setSelectedSex("F");
-    setMapMode("select");
-    setSearchQuery("");
+    const empty = createEmptyData();
+    setData(empty);
+    resetProjectView(empty);
+    setClearProjectOpen(false);
   };
 
   const visibleGroupBox = groupSelection ? getSelectionBox(groupSelection) : selectedGroupBox;
@@ -2151,6 +2143,13 @@ function BurrowApp() {
         setPrintChoiceOpen(false);
         exportCurrentView(mode);
       }}
+    />
+  ) : null;
+  const clearProjectDialog = clearProjectOpen ? (
+    <ClearProjectDialog
+      onCancel={() => setClearProjectOpen(false)}
+      onConfirm={clearActiveProject}
+      projectName={activeProject?.name ?? "名称未設定"}
     />
   ) : null;
 
@@ -2217,9 +2216,6 @@ function BurrowApp() {
               type="button"
             >
               {endingEditing ? "保存中..." : isReadOnly ? "編集する" : "編集を終了"}
-            </button>
-            <button className="export-button secondary" onClick={() => setBurrowListOpen(true)} type="button">
-              巣穴一覧
             </button>
             <button className="export-button" onClick={() => setPrintChoiceOpen(true)} type="button">
               PDF出力
@@ -2297,12 +2293,19 @@ function BurrowApp() {
               区画をコピー
             </button>
             <button
+              className="project-list-button"
+              onClick={() => setBurrowListOpen(true)}
+              type="button"
+            >
+              巣穴一覧
+            </button>
+            <button
               className="project-delete-button"
               disabled={yearProjects.length <= 1 || isReadOnly}
               onClick={deleteActiveProject}
               type="button"
             >
-              区画を削除
+              削除
             </button>
           </div>
         </section>
@@ -2394,8 +2397,13 @@ function BurrowApp() {
                 >
                   →
                 </button>
-                <button className="ghost-button" disabled={isReadOnly} onClick={resetDemo} type="button">
-                  初期例
+                <button
+                  className="ghost-button clear-map-button"
+                  disabled={isReadOnly}
+                  onClick={() => setClearProjectOpen(true)}
+                  type="button"
+                >
+                  クリア
                 </button>
               </div>
             </div>
@@ -2749,26 +2757,6 @@ function BurrowApp() {
                   : `${data.burrows.length}件`}
               </span>
             </div>
-            <button
-              aria-label="巣穴一覧を閉じる"
-              className="dialog-close-button"
-              onClick={() => setBurrowListOpen(false)}
-              type="button"
-            >
-              閉じる
-            </button>
-            <button
-              className="filter-reset-button"
-              disabled={!hasListFilters && burrowSortKey === "label-asc" && filterMatchMode === "and"}
-              onClick={() => {
-                setListFilters(createEmptyListFilters());
-                setBurrowSortKey("label-asc");
-                setFilterMatchMode("and");
-              }}
-              type="button"
-            >
-              条件をクリア
-            </button>
             <div className="match-mode-control" aria-label="検索方式">
               <span>検索方式</span>
               {(Object.keys(filterMatchModeLabels) as FilterMatchMode[]).map((mode) => (
@@ -2783,6 +2771,26 @@ function BurrowApp() {
                 </button>
               ))}
             </div>
+            <button
+              className="filter-reset-button"
+              disabled={!hasListFilters && burrowSortKey === "label-asc" && filterMatchMode === "and"}
+              onClick={() => {
+                setListFilters(createEmptyListFilters());
+                setBurrowSortKey("label-asc");
+                setFilterMatchMode("and");
+              }}
+              type="button"
+            >
+              条件をクリア
+            </button>
+            <button
+              aria-label="巣穴一覧を閉じる"
+              className="dialog-close-button"
+              onClick={() => setBurrowListOpen(false)}
+              type="button"
+            >
+              閉じる
+            </button>
           </div>
           <div className="table-filters" aria-label="巣穴一覧の絞り込みと並び替え">
             <label>
@@ -2932,6 +2940,7 @@ function BurrowApp() {
       {editPasswordDialog}
       {projectSettingsDialog}
       {printChoiceDialog}
+      {clearProjectDialog}
     </main>
   );
 }
@@ -3059,6 +3068,41 @@ function PrintChoiceDialog({
             <strong>マップ</strong>
             <span>地図だけを出力</span>
           </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ClearProjectDialog({
+  onCancel,
+  onConfirm,
+  projectName,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  projectName: string;
+}) {
+  return (
+    <div className="utility-overlay" role="presentation">
+      <section
+        aria-labelledby="clear-project-title"
+        aria-modal="true"
+        className="utility-dialog clear-project-dialog"
+        role="alertdialog"
+      >
+        <div className="utility-dialog-heading">
+          <div>
+            <p className="eyebrow clear-project-eyebrow">クリアの確認</p>
+            <h2 id="clear-project-title">「{projectName}」を空にしますか？</h2>
+          </div>
+        </div>
+        <p className="clear-project-warning">
+          この区画の巣穴、地図に描いた線、地図メモをすべて消去します。区画の名前と区画メモは残ります。
+        </p>
+        <div className="clear-project-actions">
+          <button className="dialog-close-button" onClick={onCancel} type="button">キャンセル</button>
+          <button className="clear-project-confirm" onClick={onConfirm} type="button">すべてクリア</button>
         </div>
       </section>
     </div>
