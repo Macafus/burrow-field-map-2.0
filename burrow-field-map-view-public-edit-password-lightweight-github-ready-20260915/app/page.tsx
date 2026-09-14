@@ -1465,21 +1465,30 @@ function BurrowApp() {
     updateBurrow({ label });
   };
 
-  const updateIndividual = (patch: Partial<Individual>, recordHistory = true) => {
+  const updateIndividual = (patch: Partial<Omit<Individual, "registered">>, recordHistory = true) => {
     if (!selectedBurrow || isReadOnly) return;
     if (recordHistory) pushHistory();
     setData((current) => ({
       ...current,
       burrows: current.burrows.map((burrow) =>
         burrow.uid === selectedBurrow.uid
-          ? {
-              ...burrow,
-              individuals: {
-                ...burrow.individuals,
-                [selectedSex]: { ...burrow.individuals[selectedSex], ...patch },
-              },
-              updatedAt: new Date().toISOString(),
-            }
+          ? (() => {
+              const nextIndividual = { ...burrow.individuals[selectedSex], ...patch };
+              nextIndividual.registered = Boolean(
+                nextIndividual.ringNumber.trim() ||
+                  nextIndividual.loggerStatus !== "none" ||
+                  nextIndividual.attachedDate ||
+                  nextIndividual.recoveredDate,
+              );
+              return {
+                ...burrow,
+                individuals: {
+                  ...burrow.individuals,
+                  [selectedSex]: nextIndividual,
+                },
+                updatedAt: new Date().toISOString(),
+              };
+            })()
           : burrow,
       ),
     }));
@@ -2656,21 +2665,15 @@ function BurrowApp() {
 
                 {selectedIndividual ? (
                   <div className="individual-form">
-                    <label className="checkbox-row">
-                      <input
-                        checked={selectedIndividual.registered}
-                        disabled={isReadOnly}
-                        onChange={(event) => updateIndividual({ registered: event.target.checked })}
-                        type="checkbox"
-                      />
-                      {selectedSex} 個体を登録
-                    </label>
+                    <p className="field-note">
+                      リングナンバー・ロガー状態・日付のいずれかを入力すると、{selectedSex}個体として自動登録されます。
+                    </p>
 
-                    <div className={!selectedIndividual.registered ? "disabled-fields" : ""}>
+                    <div className="individual-fields">
                       <label>
                         リングナンバー
                         <input
-                          disabled={!selectedIndividual.registered || isReadOnly}
+                          disabled={isReadOnly}
                           placeholder="例: R-184"
                           readOnly={isReadOnly}
                           value={selectedIndividual.ringNumber}
@@ -2680,7 +2683,7 @@ function BurrowApp() {
                       </label>
                       {duplicateRing ? <p className="warning">同じリングナンバーがあります。</p> : null}
 
-                      <fieldset disabled={!selectedIndividual.registered || isReadOnly}>
+                      <fieldset disabled={isReadOnly}>
                         <legend>ロガー状態</legend>
                         <div className="status-segments">
                           {(Object.keys(loggerLabels) as LoggerStatus[]).map((status) => (
@@ -2702,7 +2705,7 @@ function BurrowApp() {
                         <label>
                           装着日
                           <input
-                            disabled={!selectedIndividual.registered || isReadOnly}
+                            disabled={isReadOnly}
                             readOnly={isReadOnly}
                             type="date"
                             value={selectedIndividual.attachedDate}
@@ -2712,7 +2715,7 @@ function BurrowApp() {
                         <label>
                           回収日
                           <input
-                            disabled={!selectedIndividual.registered || isReadOnly}
+                            disabled={isReadOnly}
                             readOnly={isReadOnly}
                             type="date"
                             value={selectedIndividual.recoveredDate}

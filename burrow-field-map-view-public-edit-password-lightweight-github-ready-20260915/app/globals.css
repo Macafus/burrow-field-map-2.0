@@ -1535,27 +1535,8 @@ textarea:read-only {
   gap: 13px;
 }
 
-.checkbox-row {
-  display: grid;
-  min-height: 38px;
-  grid-template-columns: 20px 1fr;
-  align-items: center;
-  color: var(--ink);
-}
-
-.checkbox-row input {
-  width: 18px;
-  min-height: 18px;
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-.disabled-fields {
-  opacity: 0.48;
-}
-
-.disabled-fields,
-.disabled-fields > fieldset {
+.individual-fields,
+.individual-fields > fieldset {
   display: flex;
   flex-direction: column;
   gap: 13px;
