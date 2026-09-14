@@ -17,13 +17,12 @@ type LoggerStatus = "none" | "attached" | "recovered";
 type MapMode = "select" | "group" | "burrow" | "draw" | "memo";
 type PrintMode = "full" | "map";
 type BurrowSortKey = "label-asc" | "label-desc" | "female-ring" | "male-ring" | "updated-desc";
-type IndividualFilter = "all" | "registered" | LoggerStatus;
+type IndividualFilter = "all" | LoggerStatus;
 type FilterMatchMode = "and" | "or";
 type ListFilters = {
   label: string;
   female: IndividualFilter;
   male: IndividualFilter;
-  notes: string;
   attachedFrom: string;
   attachedTo: string;
   recoveredFrom: string;
@@ -91,7 +90,7 @@ type SharedSaveResponse = Pick<SharedStateResponse, "revision" | "updatedAt">;
 type SharedDeleteResponse = SharedSaveResponse & { state: WorkspaceData };
 
 const loggerLabels: Record<LoggerStatus, string> = {
-  none: "未登録",
+  none: "未装着",
   attached: "装着済",
   recovered: "回収済",
 };
@@ -106,8 +105,7 @@ const sortLabels: Record<BurrowSortKey, string> = {
 
 const individualFilterLabels: Record<IndividualFilter, string> = {
   all: "すべて",
-  registered: "登録あり",
-  none: "未登録",
+  none: "未装着",
   attached: "装着済",
   recovered: "回収済",
 };
@@ -121,7 +119,6 @@ const createEmptyListFilters = (): ListFilters => ({
   label: "",
   female: "all",
   male: "all",
-  notes: "",
   attachedFrom: "",
   attachedTo: "",
   recoveredFrom: "",
@@ -456,7 +453,6 @@ const compareBlankLast = (left: string, right: string) => {
 
 const individualMatchesFilter = (individual: Individual, filter: IndividualFilter) => {
   if (filter === "all") return true;
-  if (filter === "registered") return individual.registered;
   if (filter === "none") return !individual.registered || individual.loggerStatus === "none";
   return individual.registered && individual.loggerStatus === filter;
 };
@@ -487,10 +483,10 @@ const getSearchableDateTokens = (date: string) => {
 
 const burrowMatchesSummaryHighlight = (burrow: Burrow, filter: SummaryHighlightFilter) => {
   if (filter === "female") {
-    return burrow.individuals.F.registered && burrow.individuals.F.loggerStatus !== "none";
+    return burrow.individuals.F.registered;
   }
   if (filter === "male") {
-    return burrow.individuals.M.registered && burrow.individuals.M.loggerStatus !== "none";
+    return burrow.individuals.M.registered;
   }
   if (filter === "installed") {
     return (["F", "M"] as Sex[]).some(
@@ -684,6 +680,7 @@ function BurrowApp() {
   const [printChoiceOpen, setPrintChoiceOpen] = useState(false);
   const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
   const [burrowListOpen, setBurrowListOpen] = useState(false);
+  const [listFilterPanelOpen, setListFilterPanelOpen] = useState(false);
   const [clearProjectOpen, setClearProjectOpen] = useState(false);
   const [saveState, setSaveState] = useState("読み込み中...");
   const [manualReadOnly, setManualReadOnly] = useState(true);
@@ -1031,7 +1028,6 @@ function BurrowApp() {
 
   const normalizedSearch = searchQuery.trim().toLocaleLowerCase("ja");
   const normalizedListLabel = listFilters.label.trim().toLocaleLowerCase("ja");
-  const normalizedListNotes = listFilters.notes.trim().toLocaleLowerCase("ja");
   const filteredBurrows = useMemo(() => {
     return data.burrows.filter((burrow) => {
       const activeConditions: boolean[] = [];
@@ -1053,9 +1049,6 @@ function BurrowApp() {
         activeConditions.push(
           burrowMatchesDateRange(burrow, "recoveredDate", listFilters.recoveredFrom, listFilters.recoveredTo),
         );
-      }
-      if (normalizedListNotes) {
-        activeConditions.push(burrow.notes.toLocaleLowerCase("ja").includes(normalizedListNotes));
       }
       const searchable = [burrow.label, burrow.notes];
       (["F", "M"] as Sex[]).forEach((sex) => {
@@ -1087,13 +1080,11 @@ function BurrowApp() {
     listFilters.recoveredFrom,
     listFilters.recoveredTo,
     normalizedListLabel,
-    normalizedListNotes,
     normalizedSearch,
   ]);
 
   const hasListFilters = Boolean(
     normalizedListLabel ||
-      normalizedListNotes ||
       listFilters.female !== "all" ||
       listFilters.male !== "all" ||
       listFilters.attachedFrom ||
@@ -1178,7 +1169,7 @@ function BurrowApp() {
     const individuals = data.burrows.flatMap((burrow) =>
       (["F", "M"] as Sex[])
         .map((sex) => ({ sex, ...burrow.individuals[sex] }))
-        .filter((individual) => individual.registered && individual.loggerStatus !== "none"),
+        .filter((individual) => individual.registered),
     );
 
     const installed = individuals.filter((individual) => individual.loggerStatus !== "none").length;
@@ -2303,7 +2294,10 @@ function BurrowApp() {
             </button>
             <button
               className="project-list-button"
-              onClick={() => setBurrowListOpen(true)}
+              onClick={() => {
+                setListFilterPanelOpen(false);
+                setBurrowListOpen(true);
+              }}
               type="button"
             >
               巣穴一覧
@@ -2319,7 +2313,8 @@ function BurrowApp() {
           </div>
         </section>
 
-        <section className="print-project-note-panel" aria-label="選択中の区画メモ">
+        <section className="project-note-display print-project-note-panel" aria-label="選択中の区画メモ">
+          <strong className="project-note-display-label">区画メモ</strong>
           <p className="print-project-note">{activeProject?.note || "区画メモなし"}</p>
         </section>
 
@@ -2366,56 +2361,57 @@ function BurrowApp() {
         </section>
 
         <div className="main-grid">
-          <section className="map-panel" aria-label={isReadOnly ? "読み取り専用の手書き地図" : "編集できる手書き地図"}>
-            <div className="map-toolbar">
-              <div className="tool-segments" role="toolbar" aria-label="地図編集ツール">
-                <ModeButton active={mapMode === "select"} onClick={() => changeMapMode("select")}>
-                  選択・移動
-                </ModeButton>
-                <ModeButton active={mapMode === "group"} disabled={isReadOnly} onClick={() => changeMapMode("group")}> 
-                  範囲選択
-                </ModeButton>
-                <ModeButton active={mapMode === "burrow"} disabled={isReadOnly} onClick={() => changeMapMode("burrow")}>
-                  巣穴追加
-                </ModeButton>
-                <ModeButton active={mapMode === "draw"} disabled={isReadOnly} onClick={() => changeMapMode("draw")}>
-                  線を描く
-                </ModeButton>
-                <ModeButton active={mapMode === "memo"} disabled={isReadOnly} onClick={() => changeMapMode("memo")}>
-                  メモ追加
-                </ModeButton>
-              </div>
-              <div className="map-actions">
-                <button
-                  aria-label="元に戻す"
-                  className="icon-text-button"
-                  disabled={!mapHistory.length || isReadOnly}
-                  onClick={undoStroke}
-                  title="元に戻す（Ctrl/Cmd+Z）"
-                  type="button"
-                >
-                  ←
-                </button>
-                <button
-                  aria-label="やり直す"
-                  className="icon-text-button"
-                  disabled={!mapFuture.length || isReadOnly}
-                  onClick={redoStroke}
-                  title="やり直す（Ctrl+Y / Ctrl/Cmd+Shift+Z）"
-                  type="button"
-                >
-                  →
-                </button>
-                <button
-                  className="ghost-button clear-map-button"
-                  disabled={isReadOnly}
-                  onClick={() => setClearProjectOpen(true)}
-                  type="button"
-                >
-                  クリア
-                </button>
-              </div>
+          <div className="map-toolbar">
+            <div className="tool-segments" role="toolbar" aria-label="地図編集ツール">
+              <ModeButton active={mapMode === "select"} onClick={() => changeMapMode("select")}>
+                選択・移動
+              </ModeButton>
+              <ModeButton active={mapMode === "group"} disabled={isReadOnly} onClick={() => changeMapMode("group")}>
+                範囲選択
+              </ModeButton>
+              <ModeButton active={mapMode === "burrow"} disabled={isReadOnly} onClick={() => changeMapMode("burrow")}>
+                巣穴追加
+              </ModeButton>
+              <ModeButton active={mapMode === "draw"} disabled={isReadOnly} onClick={() => changeMapMode("draw")}>
+                線を描く
+              </ModeButton>
+              <ModeButton active={mapMode === "memo"} disabled={isReadOnly} onClick={() => changeMapMode("memo")}>
+                メモ追加
+              </ModeButton>
             </div>
+            <div className="map-actions">
+              <button
+                aria-label="元に戻す"
+                className="icon-text-button"
+                disabled={!mapHistory.length || isReadOnly}
+                onClick={undoStroke}
+                title="元に戻す（Ctrl/Cmd+Z）"
+                type="button"
+              >
+                ←
+              </button>
+              <button
+                aria-label="やり直す"
+                className="icon-text-button"
+                disabled={!mapFuture.length || isReadOnly}
+                onClick={redoStroke}
+                title="やり直す（Ctrl+Y / Ctrl/Cmd+Shift+Z）"
+                type="button"
+              >
+                →
+              </button>
+              <button
+                className="ghost-button clear-map-button"
+                disabled={isReadOnly}
+                onClick={() => setClearProjectOpen(true)}
+                type="button"
+              >
+                クリア
+              </button>
+            </div>
+          </div>
+
+          <section className="map-panel" aria-label={isReadOnly ? "読み取り専用の手書き地図" : "編集できる手書き地図"}>
 
             <div
               ref={mapRef}
@@ -2570,7 +2566,7 @@ function BurrowApp() {
             <div className="map-legend" aria-label="地図記号の凡例">
               <span className="legend-pair"><SexMarker registered={false} sex="F" status="none" /> F（丸）</span>
               <span className="legend-pair"><SexMarker registered={false} sex="M" status="none" /> M（四角）</span>
-              <span className="legend-pair"><span className="status-swatch status-none" /> 未登録</span>
+              <span className="legend-pair"><span className="status-swatch status-none" /> 未装着</span>
               <span className="legend-pair"><span className="status-swatch status-attached" /> 装着済</span>
               <span className="legend-pair"><span className="status-swatch status-recovered" /> 回収済</span>
             </div>
@@ -2656,7 +2652,7 @@ function BurrowApp() {
                           type="button"
                         >
                           <SexMarker registered={individual.registered} sex={sex} status={individual.loggerStatus} />
-                          <span><strong>{sex}</strong><small>{individual.registered ? individual.ringNumber || "番号未入力" : "未登録"}</small></span>
+                          <span><strong>{sex}</strong><small>{individual.registered ? individual.ringNumber || "番号未入力" : "未装着"}</small></span>
                         </button>
                       );
                     })}
@@ -2760,42 +2756,56 @@ function BurrowApp() {
                   : `${data.burrows.length}件`}
               </span>
             </div>
-            <div className="match-mode-control" aria-label="検索方式">
-              <span>検索方式</span>
-              {(Object.keys(filterMatchModeLabels) as FilterMatchMode[]).map((mode) => (
-                <button
-                  aria-pressed={filterMatchMode === mode}
-                  className={filterMatchMode === mode ? "active" : ""}
-                  key={mode}
-                  onClick={() => setFilterMatchMode(mode)}
-                  type="button"
-                >
-                  {filterMatchModeLabels[mode]}
-                </button>
-              ))}
+            <div className="list-heading-actions">
+              <button
+                aria-expanded={listFilterPanelOpen}
+                className={`filter-toggle-button ${listFilterPanelOpen ? "active" : ""}`}
+                onClick={() => setListFilterPanelOpen((current) => !current)}
+                type="button"
+              >
+                条件で絞り込む
+              </button>
+              <button
+                aria-label="巣穴一覧を閉じる"
+                className="dialog-close-button"
+                onClick={() => setBurrowListOpen(false)}
+                type="button"
+              >
+                閉じる
+              </button>
             </div>
-            <button
-              className="filter-reset-button"
-              disabled={!hasListFilters && burrowSortKey === "label-asc" && filterMatchMode === "and"}
-              onClick={() => {
-                setListFilters(createEmptyListFilters());
-                setBurrowSortKey("label-asc");
-                setFilterMatchMode("and");
-              }}
-              type="button"
-            >
-              条件をクリア
-            </button>
-            <button
-              aria-label="巣穴一覧を閉じる"
-              className="dialog-close-button"
-              onClick={() => setBurrowListOpen(false)}
-              type="button"
-            >
-              閉じる
-            </button>
           </div>
-          <div className="table-filters" aria-label="巣穴一覧の絞り込みと並び替え">
+          {listFilterPanelOpen ? (
+          <section className="list-filter-panel" aria-label="巣穴一覧の絞り込み条件">
+            <div className="list-filter-panel-actions">
+              <div className="match-mode-control" aria-label="検索方式">
+                <span>検索方式</span>
+                {(Object.keys(filterMatchModeLabels) as FilterMatchMode[]).map((mode) => (
+                  <button
+                    aria-pressed={filterMatchMode === mode}
+                    className={filterMatchMode === mode ? "active" : ""}
+                    key={mode}
+                    onClick={() => setFilterMatchMode(mode)}
+                    type="button"
+                  >
+                    {filterMatchModeLabels[mode]}
+                  </button>
+                ))}
+              </div>
+              <button
+                className="filter-reset-button"
+                disabled={!hasListFilters && burrowSortKey === "label-asc" && filterMatchMode === "and"}
+                onClick={() => {
+                  setListFilters(createEmptyListFilters());
+                  setBurrowSortKey("label-asc");
+                  setFilterMatchMode("and");
+                }}
+                type="button"
+              >
+                条件をクリア
+              </button>
+            </div>
+            <div className="table-filters" aria-label="巣穴一覧の絞り込みと並び替え">
             <label>
               <span>巣穴ID</span>
               <input
@@ -2871,14 +2881,6 @@ function BurrowApp() {
               </div>
             </label>
             <label>
-              <span>備考</span>
-              <input
-                onChange={(event) => setListFilters((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="備考で絞り込み"
-                value={listFilters.notes}
-              />
-            </label>
-            <label>
               <span>並び替え</span>
               <select
                 aria-label="巣穴一覧の並び替え"
@@ -2892,7 +2894,9 @@ function BurrowApp() {
                 ))}
               </select>
             </label>
-          </div>
+            </div>
+          </section>
+          ) : null}
           <div className="table-wrap">
             <table>
               <thead>
@@ -3370,7 +3374,7 @@ function SexMarker({
   status: LoggerStatus;
   registered?: boolean;
 }) {
-  const stateLabel = registered ? loggerLabels[status] : "未登録";
+  const stateLabel = registered ? loggerLabels[status] : "未装着";
   return (
     <span
       aria-label={`${sex}・${stateLabel}`}
@@ -3385,7 +3389,7 @@ function IndividualCell({ individual, sex }: { individual: Individual; sex: Sex 
     return (
       <span className="individual-cell">
         <SexMarker registered={false} sex={sex} status="none" />
-        <span className="unregistered">未登録</span>
+        <span className="unregistered">未装着</span>
       </span>
     );
   }
