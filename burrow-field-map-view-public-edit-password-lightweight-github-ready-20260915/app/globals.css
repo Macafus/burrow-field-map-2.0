@@ -2186,6 +2186,7 @@ tbody tr.no-results:hover {
   .topbar-actions,
   .project-switcher,
   .print-project-note-panel,
+  .summary-grid,
   .map-toolbar,
   .table-filters,
   .filter-reset-button,
@@ -2340,10 +2341,9 @@ tbody tr.no-results:hover {
     min-height: 0;
     overflow: hidden;
     grid-template-columns: minmax(0, 1fr) 43mm;
-    grid-template-rows: 9mm 13mm minmax(0, 1fr);
+    grid-template-rows: 9mm minmax(0, 1fr);
     grid-template-areas:
       "meta meta"
-      "summary summary"
       "map targets";
     column-gap: 4mm;
     row-gap: 1mm;
@@ -2360,10 +2360,6 @@ tbody tr.no-results:hover {
     font-weight: 800;
     line-height: 9mm;
     text-align: left;
-  }
-
-  .print-mode-full .summary-grid {
-    grid-area: summary;
   }
 
   .print-mode-full .main-grid {
@@ -2388,7 +2384,7 @@ tbody tr.no-results:hover {
     width: auto;
     max-width: 100%;
     height: calc(100% - 7mm);
-    max-height: none;
+    max-height: 165mm;
     aspect-ratio: 297 / 210;
     flex: 0 0 auto;
     margin: 0 auto;
