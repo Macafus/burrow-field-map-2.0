@@ -237,11 +237,15 @@ const saveSharedState = async (state: WorkspaceData): Promise<SharedSaveResponse
   return (await response.json()) as SharedSaveResponse;
 };
 
-const deleteSharedYear = async (year: number, password: string): Promise<SharedDeleteResponse> => {
+const deleteSharedYear = async (
+  year: number,
+  password: string,
+  projectIds: string[],
+): Promise<SharedDeleteResponse> => {
   const response = await fetch("/api/state", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ year, password }),
+    body: JSON.stringify({ year, password, projectIds }),
   });
   const payload = (await response.json().catch(() => ({}))) as Partial<SharedDeleteResponse> & { error?: string };
   if (!response.ok) throw new Error(payload.error ?? "年ページを削除できませんでした。");
@@ -1188,11 +1192,11 @@ function BurrowApp() {
 
   const printTargets = useMemo(() => {
     const targets = data.burrows.flatMap((burrow) =>
-      (["F", "M"] as Sex[]).flatMap((sex) => {
-        const individual = burrow.individuals[sex];
-        if (!individual.registered) return [];
-        return [{ burrowLabel: burrow.label, sex, individual }];
-      }),
+      (["F", "M"] as Sex[]).map((sex) => ({
+        burrowLabel: burrow.label,
+        sex,
+        individual: burrow.individuals[sex],
+      })),
     );
     const sortTargets = (left: (typeof targets)[number], right: (typeof targets)[number]) =>
       compareText(left.burrowLabel, right.burrowLabel) || compareText(left.sex, right.sex);
@@ -1353,7 +1357,10 @@ function BurrowApp() {
     setDeleteYearSubmitting(true);
     setDeleteYearMessage("");
     try {
-      const deleted = await deleteSharedYear(deleteYearTarget.year, deleteYearPassword);
+      const projectIds = workspaceRef.current.projects
+        .filter((project) => project.year === deleteYearTarget.year)
+        .map((project) => project.id);
+      const deleted = await deleteSharedYear(deleteYearTarget.year, deleteYearPassword, projectIds);
       const serialized = JSON.stringify(deleted.state);
       workspaceRef.current = deleted.state;
       revisionRef.current = deleted.revision;

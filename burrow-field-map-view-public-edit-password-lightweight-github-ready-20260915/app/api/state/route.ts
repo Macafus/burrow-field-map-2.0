@@ -1,5 +1,5 @@
 import { ensureDatabase, getD1 } from "../../../db";
-import { isPasswordSessionValid } from "../../password-session";
+import { isPasswordSessionValid, verifyPassword } from "../../password-session";
 
 const STATE_ID = "main";
 const MAX_STATE_BYTES = 4_000_000;
@@ -22,7 +22,6 @@ function isSharedState(value: unknown) {
   const state = value as Record<string, unknown>;
   return (
     Array.isArray(state.projects) &&
-    state.projects.length > 0 &&
     state.projects.every((item) => {
       if (!item || typeof item !== "object") return false;
       const project = item as Record<string, unknown>;
@@ -118,6 +117,82 @@ export async function PUT(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "共有データを保存できませんでした。";
+    return jsonResponse({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const payload = (await request.json()) as {
+      year?: unknown;
+      password?: unknown;
+      projectIds?: unknown;
+    };
+    if (
+      typeof payload.year !== "number" ||
+      !Number.isInteger(payload.year) ||
+      payload.year < 1900 ||
+      payload.year > 2100
+    ) {
+      return jsonResponse({ error: "削除する年が正しくありません。" }, { status: 400 });
+    }
+    if (!(await verifyPassword(payload.password))) {
+      return jsonResponse({ error: "パスワードが違います。" }, { status: 401 });
+    }
+    const projectIds = Array.isArray(payload.projectIds)
+      ? payload.projectIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+      : [];
+
+    await ensureDatabase();
+    const currentRow = await getD1()
+      .prepare("SELECT data FROM app_states WHERE id = ?")
+      .bind(STATE_ID)
+      .first<Pick<StoredRow, "data">>();
+    if (!currentRow) {
+      return jsonResponse({ error: "削除する年ページが見つかりません。" }, { status: 404 });
+    }
+
+    const currentState = JSON.parse(currentRow.data) as unknown;
+    if (!isSharedState(currentState)) {
+      return jsonResponse({ error: "共有データの形式が正しくありません。" }, { status: 500 });
+    }
+    let nextState: { projects: unknown[] };
+    if (isAppData(currentState)) {
+      // Older saved data represented one year directly, before year pages were introduced.
+      nextState = { projects: [] };
+    } else {
+      const workspace = currentState as {
+        projects: Array<{ id?: string; year?: number }>;
+      };
+      const projectIdSet = new Set(projectIds);
+      const nextProjects = workspace.projects.filter((project) =>
+        projectIdSet.size > 0
+          ? !project.id || !projectIdSet.has(project.id)
+          : project.year !== payload.year,
+      );
+      if (nextProjects.length === workspace.projects.length) {
+        return jsonResponse({ error: `${payload.year}年ページが見つかりません。` }, { status: 404 });
+      }
+      nextState = { ...workspace, projects: nextProjects };
+    }
+    const serialized = JSON.stringify(nextState);
+    const row = await getD1()
+      .prepare(`
+        UPDATE app_states
+        SET data = ?, revision = revision + 1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        RETURNING revision, updated_at
+      `)
+      .bind(serialized, STATE_ID)
+      .first<{ revision: number; updated_at: string }>();
+
+    return jsonResponse({
+      state: nextState,
+      revision: row?.revision ?? 1,
+      updatedAt: row?.updated_at ?? new Date().toISOString(),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "年ページを削除できませんでした。";
     return jsonResponse({ error: message }, { status: 500 });
   }
 }
