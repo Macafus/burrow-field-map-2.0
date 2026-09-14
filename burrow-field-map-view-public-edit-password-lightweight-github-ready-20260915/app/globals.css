@@ -2339,7 +2339,7 @@ tbody tr.no-results:hover {
     max-height: 190mm;
     min-height: 0;
     overflow: hidden;
-    grid-template-columns: minmax(0, 1fr) 86mm;
+    grid-template-columns: minmax(0, 1fr) 43mm;
     grid-template-rows: 9mm 13mm minmax(0, 1fr);
     grid-template-areas:
       "meta meta"
@@ -2388,8 +2388,9 @@ tbody tr.no-results:hover {
     width: auto;
     max-width: 100%;
     height: calc(100% - 7mm);
-    max-height: 140mm;
+    max-height: none;
     aspect-ratio: 297 / 210;
+    flex: 0 0 auto;
     margin: 0 auto;
   }
 
@@ -2410,7 +2411,7 @@ tbody tr.no-results:hover {
     overflow: hidden;
     border: 0;
     border-radius: 0;
-    padding: 3mm;
+    padding: 1.5mm;
     grid-area: targets;
     break-before: auto;
     break-inside: avoid;
@@ -2423,7 +2424,7 @@ tbody tr.no-results:hover {
 
   .print-mode-full .print-target-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 2mm;
+    gap: 1mm;
   }
 
   .print-mode-full .print-target-grid h3 {
