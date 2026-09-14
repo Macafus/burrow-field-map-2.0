@@ -2185,6 +2185,7 @@ tbody tr.no-results:hover {
   .search-field,
   .topbar-actions,
   .project-switcher,
+  .print-project-note-panel,
   .map-toolbar,
   .table-filters,
   .filter-reset-button,
@@ -2339,10 +2340,9 @@ tbody tr.no-results:hover {
     min-height: 0;
     overflow: hidden;
     grid-template-columns: minmax(0, 1fr) 86mm;
-    grid-template-rows: 5mm auto 13mm minmax(0, 1fr);
+    grid-template-rows: 9mm 13mm minmax(0, 1fr);
     grid-template-areas:
       "meta meta"
-      "note note"
       "summary summary"
       "map targets";
     column-gap: 4mm;
@@ -2353,11 +2353,13 @@ tbody tr.no-results:hover {
 
   .print-mode-full .print-meta {
     grid-area: meta;
+    min-height: 9mm;
     margin: 0;
-  }
-
-  .print-mode-full .print-project-note-panel {
-    grid-area: note;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 9mm;
+    text-align: left;
   }
 
   .print-mode-full .summary-grid {
