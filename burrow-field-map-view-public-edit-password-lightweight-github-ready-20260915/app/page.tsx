@@ -17,7 +17,7 @@ type LoggerStatus = "none" | "attached" | "recovered";
 type MapMode = "select" | "group" | "burrow" | "draw" | "memo";
 type PrintMode = "full" | "map";
 type BurrowSortKey = "label-asc" | "label-desc" | "female-ring" | "male-ring" | "updated-desc";
-type IndividualFilter = "all" | "registered" | "unregistered" | LoggerStatus;
+type IndividualFilter = "all" | "registered" | LoggerStatus;
 type FilterMatchMode = "and" | "or";
 type ListFilters = {
   label: string;
@@ -57,6 +57,7 @@ type GroupDrag = { start: MapPoint; ids: string[]; origins: Record<string, MapPo
 type AppData = { burrows: Burrow[]; strokes: MapStroke[]; memos: MapMemo[] };
 type Project = { id: string; name: string; note: string; year: number; data: AppData; updatedAt: string };
 type WorkspaceData = { projects: Project[] };
+type YearSummary = { year: number; projects: number; burrows: number; updatedAt: string };
 type StoredWorkspaceData = {
   projects: Array<Omit<Project, "note" | "year"> & { note?: string; year?: number }>;
 };
@@ -67,6 +68,7 @@ type HistorySnapshot = {
   selectedBurrowUid: string;
   selectedGroupUids: string[];
   selectedMemoId: string;
+  selectedStrokeId: string;
   selectedSex: Sex;
   mapMode: MapMode;
 };
@@ -86,9 +88,10 @@ type SharedStateResponse = {
   updatedAt: string | null;
 };
 type SharedSaveResponse = Pick<SharedStateResponse, "revision" | "updatedAt">;
+type SharedDeleteResponse = SharedSaveResponse & { state: WorkspaceData };
 
 const loggerLabels: Record<LoggerStatus, string> = {
-  none: "未装着",
+  none: "未登録",
   attached: "装着済",
   recovered: "回収済",
 };
@@ -104,8 +107,7 @@ const sortLabels: Record<BurrowSortKey, string> = {
 const individualFilterLabels: Record<IndividualFilter, string> = {
   all: "すべて",
   registered: "登録あり",
-  unregistered: "未登録",
-  none: "未装着",
+  none: "未登録",
   attached: "装着済",
   recovered: "回収済",
 };
@@ -163,7 +165,6 @@ const isWorkspaceData = (value: unknown): value is StoredWorkspaceData => {
   const state = value as Record<string, unknown>;
   return (
     Array.isArray(state.projects) &&
-    state.projects.length > 0 &&
     state.projects.every((item) => {
       if (!item || typeof item !== "object") return false;
       const project = item as Record<string, unknown>;
@@ -239,6 +240,25 @@ const saveSharedState = async (state: WorkspaceData): Promise<SharedSaveResponse
   return (await response.json()) as SharedSaveResponse;
 };
 
+const deleteSharedYear = async (year: number, password: string): Promise<SharedDeleteResponse> => {
+  const response = await fetch("/api/state", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ year, password }),
+  });
+  const payload = (await response.json().catch(() => ({}))) as Partial<SharedDeleteResponse> & { error?: string };
+  if (!response.ok) throw new Error(payload.error ?? "年ページを削除できませんでした。");
+  const state = normalizeWorkspaceData(payload.state);
+  if (!state || typeof payload.revision !== "number") {
+    throw new Error("削除後の共有データを確認できませんでした。");
+  }
+  return {
+    state,
+    revision: payload.revision,
+    updatedAt: payload.updatedAt ?? null,
+  };
+};
+
 const persistLocalState = (state: WorkspaceData) => {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -257,7 +277,8 @@ const loadActiveProjectId = () => {
 
 const persistActiveProjectId = (projectId: string) => {
   try {
-    window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+    if (projectId) window.localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+    else window.localStorage.removeItem(ACTIVE_PROJECT_KEY);
   } catch {
     // Project selection is a device-local preference only.
   }
@@ -436,7 +457,7 @@ const compareBlankLast = (left: string, right: string) => {
 const individualMatchesFilter = (individual: Individual, filter: IndividualFilter) => {
   if (filter === "all") return true;
   if (filter === "registered") return individual.registered;
-  if (filter === "unregistered") return !individual.registered;
+  if (filter === "none") return !individual.registered || individual.loggerStatus === "none";
   return individual.registered && individual.loggerStatus === filter;
 };
 
@@ -465,8 +486,12 @@ const getSearchableDateTokens = (date: string) => {
 };
 
 const burrowMatchesSummaryHighlight = (burrow: Burrow, filter: SummaryHighlightFilter) => {
-  if (filter === "female") return burrow.individuals.F.registered;
-  if (filter === "male") return burrow.individuals.M.registered;
+  if (filter === "female") {
+    return burrow.individuals.F.registered && burrow.individuals.F.loggerStatus !== "none";
+  }
+  if (filter === "male") {
+    return burrow.individuals.M.registered && burrow.individuals.M.loggerStatus !== "none";
+  }
   if (filter === "installed") {
     return (["F", "M"] as Sex[]).some(
       (sex) => burrow.individuals[sex].registered && burrow.individuals[sex].loggerStatus !== "none",
@@ -480,6 +505,32 @@ const burrowMatchesSummaryHighlight = (burrow: Burrow, filter: SummaryHighlightF
   return (["F", "M"] as Sex[]).some(
     (sex) => burrow.individuals[sex].registered && burrow.individuals[sex].loggerStatus === "attached",
   );
+};
+
+const distanceToSegment = (point: MapPoint, start: MapPoint, end: MapPoint) => {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (dx === 0 && dy === 0) return Math.hypot(point.x - start.x, point.y - start.y);
+  const position = Math.max(
+    0,
+    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)),
+  );
+  return Math.hypot(point.x - (start.x + position * dx), point.y - (start.y + position * dy));
+};
+
+const findNearestStroke = (point: MapPoint, strokes: MapStroke[], threshold = 2.4) => {
+  let nearest: MapStroke | undefined;
+  let nearestDistance = threshold;
+  strokes.forEach((stroke) => {
+    for (let index = 1; index < stroke.points.length; index += 1) {
+      const distance = distanceToSegment(point, stroke.points[index - 1], stroke.points[index]);
+      if (distance <= nearestDistance) {
+        nearest = stroke;
+        nearestDistance = distance;
+      }
+    }
+  });
+  return nearest;
 };
 
 const createInitialWorkspace = (): WorkspaceData => ({
@@ -615,6 +666,7 @@ function BurrowApp() {
   const [selectedBurrowUid, setSelectedBurrowUid] = useState("burrow-1");
   const [selectedGroupUids, setSelectedGroupUids] = useState<string[]>([]);
   const [selectedMemoId, setSelectedMemoId] = useState("");
+  const [selectedStrokeId, setSelectedStrokeId] = useState("");
   const [editingMemoId, setEditingMemoId] = useState("");
   const [eraseSelection, setEraseSelection] = useState<EraseSelection | null>(null);
   const [groupSelection, setGroupSelection] = useState<EraseSelection | null>(null);
@@ -629,12 +681,19 @@ function BurrowApp() {
   const [summaryHighlightFilters, setSummaryHighlightFilters] = useState<SummaryHighlightFilter[]>([]);
   const [printTimestamp, setPrintTimestamp] = useState("");
   const [printMode, setPrintMode] = useState<PrintMode>("full");
+  const [printChoiceOpen, setPrintChoiceOpen] = useState(false);
+  const [projectSettingsOpen, setProjectSettingsOpen] = useState(false);
+  const [burrowListOpen, setBurrowListOpen] = useState(false);
   const [saveState, setSaveState] = useState("読み込み中...");
   const [manualReadOnly, setManualReadOnly] = useState(true);
   const [editPasswordOpen, setEditPasswordOpen] = useState(false);
   const [editPassword, setEditPassword] = useState("");
   const [editPasswordMessage, setEditPasswordMessage] = useState("");
   const [editPasswordSubmitting, setEditPasswordSubmitting] = useState(false);
+  const [deleteYearTarget, setDeleteYearTarget] = useState<YearSummary | null>(null);
+  const [deleteYearPassword, setDeleteYearPassword] = useState("");
+  const [deleteYearMessage, setDeleteYearMessage] = useState("");
+  const [deleteYearSubmitting, setDeleteYearSubmitting] = useState(false);
   const [endingEditing, setEndingEditing] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const yearProjects = useMemo(
@@ -643,7 +702,7 @@ function BurrowApp() {
   );
   const yearSummaries = useMemo(
     () => {
-      const summaries = new Map<number, { year: number; projects: number; burrows: number; updatedAt: string }>();
+      const summaries = new Map<number, YearSummary>();
       workspaceData.projects.forEach((project) => {
         const current = summaries.get(project.year);
         summaries.set(project.year, {
@@ -733,12 +792,12 @@ function BurrowApp() {
       const storedProjectId = loadActiveProjectId();
       const localProjectId = localData.projects.some((project) => project.id === storedProjectId)
         ? storedProjectId!
-        : localData.projects[0].id;
-      const localProject = localData.projects.find((project) => project.id === localProjectId)!;
+        : localData.projects[0]?.id ?? "";
+      const localProject = localData.projects.find((project) => project.id === localProjectId);
       workspaceRef.current = localData;
       setWorkspaceData(localData);
       setActiveProjectId(localProjectId);
-      setSelectedBurrowUid(localProject.data.burrows[0]?.uid ?? "");
+      setSelectedBurrowUid(localProject?.data.burrows[0]?.uid ?? "");
       setSaveState("読み取り専用");
 
       try {
@@ -752,15 +811,15 @@ function BurrowApp() {
         const serialized = JSON.stringify(nextData);
         const nextProjectId = nextData.projects.some((project) => project.id === storedProjectId)
           ? storedProjectId!
-          : nextData.projects[0].id;
-        const nextProject = nextData.projects.find((project) => project.id === nextProjectId)!;
+          : nextData.projects[0]?.id ?? "";
+        const nextProject = nextData.projects.find((project) => project.id === nextProjectId);
         workspaceRef.current = nextData;
         revisionRef.current = nextRevision;
         lastSyncedJsonRef.current = serialized;
         dirtyRef.current = false;
         setWorkspaceData(nextData);
         setActiveProjectId(nextProjectId);
-        setSelectedBurrowUid(nextProject.data.burrows[0]?.uid ?? "");
+        setSelectedBurrowUid(nextProject?.data.burrows[0]?.uid ?? "");
         setSaveState("読み取り専用");
       } catch {
         lastSyncedJsonRef.current = "";
@@ -849,8 +908,8 @@ function BurrowApp() {
           : remoteState.projects.filter((project) => project.year === activeYear);
         const nextProjectId = remoteYearProjects.some((project) => project.id === activeProjectId)
           ? activeProjectId
-          : remoteYearProjects[0]?.id ?? remoteState.projects[0].id;
-        const nextProject = remoteState.projects.find((project) => project.id === nextProjectId)!;
+          : remoteYearProjects[0]?.id ?? remoteState.projects[0]?.id ?? "";
+        const nextProject = remoteState.projects.find((project) => project.id === nextProjectId);
         revisionRef.current = shared.revision;
         lastSyncedJsonRef.current = serialized;
         dirtyRef.current = false;
@@ -860,12 +919,15 @@ function BurrowApp() {
         if (activeYear !== null && !remoteYearProjects.length) setActiveYear(null);
         setActiveProjectId(nextProjectId);
         setSelectedBurrowUid((current) =>
-          nextProject.data.burrows.some((burrow) => burrow.uid === current)
+          nextProject?.data.burrows.some((burrow) => burrow.uid === current)
             ? current
-            : nextProject.data.burrows[0]?.uid ?? "",
+            : nextProject?.data.burrows[0]?.uid ?? "",
         );
         setSelectedMemoId((current) =>
-          nextProject.data.memos.some((memo) => memo.id === current) ? current : "",
+          nextProject?.data.memos.some((memo) => memo.id === current) ? current : "",
+        );
+        setSelectedStrokeId((current) =>
+          nextProject?.data.strokes.some((stroke) => stroke.id === current) ? current : "",
         );
         setSaveState(isReadOnly ? "読み取り専用" : "同期済み");
       } catch {
@@ -905,13 +967,13 @@ function BurrowApp() {
       if (!context) return;
       context.scale(ratio, ratio);
       context.clearRect(0, 0, bounds.width, bounds.height);
-      context.strokeStyle = "rgba(53, 55, 49, 0.72)";
-      context.lineWidth = 2.5;
       context.lineCap = "round";
       context.lineJoin = "round";
 
-      data.strokes.forEach((stroke) => {
+      const drawStroke = (stroke: MapStroke, selected: boolean) => {
         if (stroke.points.length < 2) return;
+        context.strokeStyle = selected ? "rgba(161, 61, 54, 0.96)" : "rgba(53, 55, 49, 0.72)";
+        context.lineWidth = selected ? 4.5 : 2.5;
         context.beginPath();
         stroke.points.forEach((point, index) => {
           const x = (point.x / 100) * bounds.width;
@@ -920,14 +982,18 @@ function BurrowApp() {
           else context.lineTo(x, y);
         });
         context.stroke();
-      });
+      };
+
+      data.strokes.filter((stroke) => stroke.id !== selectedStrokeId).forEach((stroke) => drawStroke(stroke, false));
+      const selected = data.strokes.find((stroke) => stroke.id === selectedStrokeId);
+      if (selected) drawStroke(selected, true);
     };
 
     render();
     const observer = new ResizeObserver(render);
     observer.observe(map);
     return () => observer.disconnect();
-  }, [data.strokes]);
+  }, [data.strokes, selectedStrokeId]);
 
   const selectedBurrow = useMemo(
     () => data.burrows.find((burrow) => burrow.uid === selectedBurrowUid),
@@ -937,6 +1003,11 @@ function BurrowApp() {
   const selectedMemo = useMemo(
     () => data.memos.find((memo) => memo.id === selectedMemoId),
     [data, selectedMemoId],
+  );
+
+  const selectedStroke = useMemo(
+    () => data.strokes.find((stroke) => stroke.id === selectedStrokeId),
+    [data.strokes, selectedStrokeId],
   );
 
   useEffect(() => {
@@ -1106,7 +1177,7 @@ function BurrowApp() {
     const individuals = data.burrows.flatMap((burrow) =>
       (["F", "M"] as Sex[])
         .map((sex) => ({ sex, ...burrow.individuals[sex] }))
-        .filter((individual) => individual.registered),
+        .filter((individual) => individual.registered && individual.loggerStatus !== "none"),
     );
 
     const installed = individuals.filter((individual) => individual.loggerStatus !== "none").length;
@@ -1120,6 +1191,22 @@ function BurrowApp() {
       installed,
       recovered,
       unrecovered: installed - recovered,
+    };
+  }, [data]);
+
+  const printTargets = useMemo(() => {
+    const targets = data.burrows.flatMap((burrow) =>
+      (["F", "M"] as Sex[]).flatMap((sex) => {
+        const individual = burrow.individuals[sex];
+        if (!individual.registered) return [];
+        return [{ burrowLabel: burrow.label, sex, individual }];
+      }),
+    );
+    const sortTargets = (left: (typeof targets)[number], right: (typeof targets)[number]) =>
+      compareText(left.burrowLabel, right.burrowLabel) || compareText(left.sex, right.sex);
+    return {
+      attachment: targets.filter(({ individual }) => individual.loggerStatus === "none").sort(sortTargets),
+      recovery: targets.filter(({ individual }) => individual.loggerStatus === "attached").sort(sortTargets),
     };
   }, [data]);
 
@@ -1168,6 +1255,7 @@ function BurrowApp() {
     selectedBurrowUid,
     selectedGroupUids: [...selectedGroupUids],
     selectedMemoId,
+    selectedStrokeId,
     selectedSex,
     mapMode,
   });
@@ -1199,6 +1287,11 @@ function BurrowApp() {
     setSelectedMemoId(
       nextProject?.data.memos.some((memo) => memo.id === snapshot.selectedMemoId) ? snapshot.selectedMemoId : "",
     );
+    setSelectedStrokeId(
+      nextProject?.data.strokes.some((stroke) => stroke.id === snapshot.selectedStrokeId)
+        ? snapshot.selectedStrokeId
+        : "",
+    );
     setSelectedSex(snapshot.selectedSex);
     setMapMode(snapshot.mapMode);
     setEditingMemoId("");
@@ -1226,6 +1319,7 @@ function BurrowApp() {
     setEraseSelection(null);
     setGroupSelection(null);
     setSelectedGroupUids([]);
+    setSelectedStrokeId("");
     eraseSelectionRef.current = null;
     groupSelectionRef.current = null;
     groupDragRef.current = null;
@@ -1245,6 +1339,52 @@ function BurrowApp() {
     setEditPasswordOpen(false);
     setEditPassword("");
     setEditPasswordMessage("");
+  };
+
+  const requestYearDeletion = (summary: YearSummary) => {
+    if (isReadOnly || deleteYearSubmitting) return;
+    setDeleteYearTarget(summary);
+    setDeleteYearPassword("");
+    setDeleteYearMessage("");
+  };
+
+  const cancelYearDeletion = () => {
+    if (deleteYearSubmitting) return;
+    setDeleteYearTarget(null);
+    setDeleteYearPassword("");
+    setDeleteYearMessage("");
+  };
+
+  const confirmYearDeletion = async (event: ReactFormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!deleteYearTarget || !deleteYearPassword || deleteYearSubmitting || isReadOnly) return;
+    setDeleteYearSubmitting(true);
+    setDeleteYearMessage("");
+    try {
+      const deleted = await deleteSharedYear(deleteYearTarget.year, deleteYearPassword);
+      const serialized = JSON.stringify(deleted.state);
+      workspaceRef.current = deleted.state;
+      revisionRef.current = deleted.revision;
+      lastSyncedJsonRef.current = serialized;
+      dirtyRef.current = false;
+      persistLocalState(deleted.state);
+      setWorkspaceData(deleted.state);
+      setActiveYear(null);
+      setActiveProjectId("");
+      persistActiveProjectId("");
+      setSelectedBurrowUid("");
+      setSelectedMemoId("");
+      setSelectedGroupUids([]);
+      setMapHistory([]);
+      setMapFuture([]);
+      setDeleteYearTarget(null);
+      setDeleteYearPassword("");
+      setSaveState("同期済み");
+    } catch (error) {
+      setDeleteYearMessage(error instanceof Error ? error.message : "年ページを削除できませんでした。");
+    } finally {
+      setDeleteYearSubmitting(false);
+    }
   };
 
   const unlockEditing = async (event: ReactFormEvent<HTMLFormElement>) => {
@@ -1299,6 +1439,7 @@ function BurrowApp() {
   const changeMapMode = (nextMode: MapMode) => {
     if (isReadOnly && nextMode !== "select") return;
     setMapMode(nextMode);
+    if (nextMode !== "select") setSelectedStrokeId("");
     if (nextMode === "group") return;
     groupSelectionRef.current = null;
     groupDragRef.current = null;
@@ -1431,7 +1572,21 @@ function BurrowApp() {
     if (isReadOnly) {
       setSelectedMemoId("");
       setSelectedGroupUids([]);
+      setSelectedStrokeId("");
       return;
+    }
+
+    if (mapMode === "select" && event.button === 0) {
+      const stroke = findNearestStroke(point, data.strokes);
+      if (stroke) {
+        event.preventDefault();
+        setSelectedStrokeId(stroke.id);
+        setSelectedBurrowUid("");
+        setSelectedMemoId("");
+        setSelectedGroupUids([]);
+        return;
+      }
+      setSelectedStrokeId("");
     }
 
     if (mapMode === "group" && event.button === 0) {
@@ -1443,6 +1598,7 @@ function BurrowApp() {
       setSelectedGroupUids([]);
       setSelectedBurrowUid("");
       setSelectedMemoId("");
+      setSelectedStrokeId("");
       return;
     }
 
@@ -1470,6 +1626,7 @@ function BurrowApp() {
       setData((current) => ({ ...current, memos: [...current.memos, memo] }));
       setSelectedMemoId(memo.id);
       setSelectedBurrowUid("");
+      setSelectedStrokeId("");
       setEditingMemoId(memo.id);
       setMapMode("select");
       memoModeCreationRef.current = Date.now();
@@ -1489,6 +1646,7 @@ function BurrowApp() {
       pendingBurrowLabelFocusRef.current = next.uid;
       setSelectedBurrowUid(next.uid);
       setSelectedMemoId("");
+      setSelectedStrokeId("");
       setSelectedSex("F");
       return;
     }
@@ -1507,6 +1665,7 @@ function BurrowApp() {
 
     setSelectedMemoId("");
     setSelectedGroupUids([]);
+    setSelectedStrokeId("");
   };
 
   const handleMapPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1602,6 +1761,7 @@ function BurrowApp() {
       setSelectedGroupUids(ids);
       setSelectedBurrowUid(ids[0] ?? "");
       setSelectedMemoId("");
+      setSelectedStrokeId("");
     }
     groupSelectionRef.current = null;
     setGroupSelection(null);
@@ -1627,6 +1787,7 @@ function BurrowApp() {
     event.stopPropagation();
     setSelectedBurrowUid(burrow.uid);
     setSelectedMemoId("");
+    setSelectedStrokeId("");
     if (!isReadOnly && mapMode === "select") {
       setSelectedGroupUids([]);
       pushHistory();
@@ -1640,11 +1801,21 @@ function BurrowApp() {
     setSelectedMemoId(memo.id);
     setSelectedBurrowUid("");
     setSelectedGroupUids([]);
+    setSelectedStrokeId("");
     if (!isReadOnly && mapMode === "select") {
       pushHistory();
       event.currentTarget.setPointerCapture(event.pointerId);
       dragRef.current = { kind: "memo", id: memo.id };
     }
+  };
+
+  const selectStroke = (event: ReactPointerEvent<SVGPolylineElement>, stroke: MapStroke) => {
+    event.stopPropagation();
+    if (isReadOnly || mapMode !== "select") return;
+    setSelectedStrokeId(stroke.id);
+    setSelectedBurrowUid("");
+    setSelectedMemoId("");
+    setSelectedGroupUids([]);
   };
 
   const deleteSelectedBurrow = () => {
@@ -1667,6 +1838,16 @@ function BurrowApp() {
     setEditingMemoId("");
     setSelectedMemoId("");
     setSelectedBurrowUid(data.burrows[0]?.uid ?? "");
+  };
+
+  const deleteSelectedStroke = () => {
+    if (!selectedStroke || isReadOnly) return;
+    pushHistory();
+    setData((current) => ({
+      ...current,
+      strokes: current.strokes.filter((stroke) => stroke.id !== selectedStroke.id),
+    }));
+    setSelectedStrokeId("");
   };
 
   const undoStroke = () => {
@@ -1714,9 +1895,14 @@ function BurrowApp() {
       redoStroke();
       return;
     }
-    if ((event.key === "Delete" || event.key === "Backspace") && selectedMemo && !editingMemoId) {
-      event.preventDefault();
-      deleteSelectedMemo();
+    if (event.key === "Delete" || event.key === "Backspace") {
+      if (selectedStroke) {
+        event.preventDefault();
+        deleteSelectedStroke();
+      } else if (selectedMemo && !editingMemoId) {
+        event.preventDefault();
+        deleteSelectedMemo();
+      }
     }
   });
 
@@ -1745,6 +1931,7 @@ function BurrowApp() {
     setEraseSelection(null);
     setGroupSelection(null);
     setSelectedGroupUids([]);
+    setSelectedStrokeId("");
     eraseSelectionRef.current = null;
     groupSelectionRef.current = null;
     groupDragRef.current = null;
@@ -1757,6 +1944,7 @@ function BurrowApp() {
     setSelectedBurrowUid(projectData.burrows[0]?.uid ?? "");
     setSelectedMemoId("");
     setSelectedGroupUids([]);
+    setSelectedStrokeId("");
     setEditingMemoId("");
     setEraseSelection(null);
     setGroupSelection(null);
@@ -1806,7 +1994,11 @@ function BurrowApp() {
     setSelectedBurrowUid("");
     setSelectedMemoId("");
     setSelectedGroupUids([]);
+    setSelectedStrokeId("");
     setSearchQuery("");
+    setProjectSettingsOpen(false);
+    setBurrowListOpen(false);
+    setPrintChoiceOpen(false);
   };
 
   const selectProject = (projectId: string) => {
@@ -1815,6 +2007,8 @@ function BurrowApp() {
     if (!project) return;
     setActiveProjectId(projectId);
     persistActiveProjectId(projectId);
+    setProjectSettingsOpen(false);
+    setBurrowListOpen(false);
     resetProjectView(project.data);
   };
 
@@ -1929,6 +2123,36 @@ function BurrowApp() {
       submitting={editPasswordSubmitting}
     />
   ) : null;
+  const deleteYearDialog = deleteYearTarget ? (
+    <DeleteYearDialog
+      message={deleteYearMessage}
+      onCancel={cancelYearDeletion}
+      onPasswordChange={setDeleteYearPassword}
+      onSubmit={confirmYearDeletion}
+      password={deleteYearPassword}
+      submitting={deleteYearSubmitting}
+      summary={deleteYearTarget}
+    />
+  ) : null;
+  const projectSettingsDialog = projectSettingsOpen ? (
+    <ProjectSettingsDialog
+      isReadOnly={isReadOnly}
+      name={activeProject?.name ?? ""}
+      note={activeProject?.note ?? ""}
+      onClose={() => setProjectSettingsOpen(false)}
+      onNameChange={renameActiveProject}
+      onNoteChange={updateActiveProjectNote}
+    />
+  ) : null;
+  const printChoiceDialog = printChoiceOpen ? (
+    <PrintChoiceDialog
+      onCancel={() => setPrintChoiceOpen(false)}
+      onSelect={(mode) => {
+        setPrintChoiceOpen(false);
+        exportCurrentView(mode);
+      }}
+    />
+  ) : null;
 
   if (!hydrated) {
     return (
@@ -1948,12 +2172,14 @@ function BurrowApp() {
           endingEditing={endingEditing}
           isReadOnly={isReadOnly}
           onCreate={createYearPage}
+          onDeleteRequest={requestYearDeletion}
           onFinishEditing={finishEditing}
           onOpen={openYear}
           onRequestEditing={requestEditing}
           summaries={yearSummaries}
         />
         {editPasswordDialog}
+        {deleteYearDialog}
       </>
     );
   }
@@ -1992,11 +2218,11 @@ function BurrowApp() {
             >
               {endingEditing ? "保存中..." : isReadOnly ? "編集する" : "編集を終了"}
             </button>
-            <button className="export-button" onClick={() => exportCurrentView("full")} type="button">
-              PDF出力
+            <button className="export-button secondary" onClick={() => setBurrowListOpen(true)} type="button">
+              巣穴一覧
             </button>
-            <button className="export-button secondary" onClick={() => exportCurrentView("map")} type="button">
-              マップのみPDF
+            <button className="export-button" onClick={() => setPrintChoiceOpen(true)} type="button">
+              PDF出力
             </button>
             <div className="status-pill" aria-live="polite">
               <span className="save-dot" />
@@ -2052,17 +2278,16 @@ function BurrowApp() {
             </button>
           </div>
           <div className="project-actions">
-            <label>
-              <span className="sr-only">選択中の区画名</span>
-              <input
-                aria-label="選択中の区画名"
-                disabled={isReadOnly}
-                onBlur={(event) => renameActiveProject(event.target.value.trim() || "名称未設定")}
-                onChange={(event) => renameActiveProject(event.target.value)}
-                onFocus={pushHistory}
-                value={activeProject?.name ?? ""}
-              />
-            </label>
+            <button
+              className="project-settings-button"
+              onClick={() => {
+                if (!isReadOnly) pushHistory();
+                setProjectSettingsOpen(true);
+              }}
+              type="button"
+            >
+              区画の設定
+            </button>
             <button
               className="project-copy-button"
               disabled={!activeProject || isReadOnly}
@@ -2082,19 +2307,7 @@ function BurrowApp() {
           </div>
         </section>
 
-        <section className="project-note" aria-label="選択中の区画メモ">
-          <label>
-            <span>区画メモ</span>
-            <textarea
-              maxLength={1200}
-              onChange={(event) => updateActiveProjectNote(event.target.value)}
-              onFocus={pushHistory}
-              placeholder="例：バイオロギング用の区画"
-              readOnly={isReadOnly}
-              rows={2}
-              value={activeProject?.note ?? ""}
-            />
-          </label>
+        <section className="print-project-note-panel" aria-label="選択中の区画メモ">
           <p className="print-project-note">{activeProject?.note || "区画メモなし"}</p>
         </section>
 
@@ -2147,8 +2360,8 @@ function BurrowApp() {
                 <ModeButton active={mapMode === "select"} onClick={() => changeMapMode("select")}>
                   選択・移動
                 </ModeButton>
-                <ModeButton active={mapMode === "group"} disabled={isReadOnly} onClick={() => changeMapMode("group")}>
-                  範囲移動
+                <ModeButton active={mapMode === "group"} disabled={isReadOnly} onClick={() => changeMapMode("group")}> 
+                  範囲選択
                 </ModeButton>
                 <ModeButton active={mapMode === "burrow"} disabled={isReadOnly} onClick={() => changeMapMode("burrow")}>
                   巣穴追加
@@ -2162,22 +2375,24 @@ function BurrowApp() {
               </div>
               <div className="map-actions">
                 <button
+                  aria-label="元に戻す"
                   className="icon-text-button"
                   disabled={!mapHistory.length || isReadOnly}
                   onClick={undoStroke}
                   title="元に戻す（Ctrl/Cmd+Z）"
                   type="button"
                 >
-                  元に戻す
+                  ←
                 </button>
                 <button
+                  aria-label="やり直す"
                   className="icon-text-button"
                   disabled={!mapFuture.length || isReadOnly}
                   onClick={redoStroke}
                   title="やり直す（Ctrl+Y / Ctrl/Cmd+Shift+Z）"
                   type="button"
                 >
-                  やり直す
+                  →
                 </button>
                 <button className="ghost-button" disabled={isReadOnly} onClick={resetDemo} type="button">
                   初期例
@@ -2194,9 +2409,40 @@ function BurrowApp() {
               onPointerMove={handleMapPointerMove}
               onPointerUp={finishPointerAction}
               onPointerCancel={finishPointerAction}
-              title="範囲移動では巣穴を囲み、表示された枠をドラッグしてまとめて移動できます。"
+              title="範囲選択では巣穴を囲み、表示された枠をドラッグしてまとめて移動できます。"
             >
               <canvas ref={canvasRef} className="drawing-canvas" aria-hidden="true" />
+              <svg
+                aria-label="地図に描いた線"
+                className="stroke-hit-layer"
+                preserveAspectRatio="none"
+                role="group"
+                viewBox="0 0 100 100"
+              >
+                {data.strokes.map((stroke, index) => (
+                  <polyline
+                    aria-label={`線${index + 1}を選択`}
+                    aria-pressed={stroke.id === selectedStrokeId}
+                    className={stroke.id === selectedStrokeId ? "selected" : ""}
+                    data-map-control
+                    key={stroke.id}
+                    onKeyDown={(event) => {
+                      if ((event.key === "Enter" || event.key === " ") && !isReadOnly && mapMode === "select") {
+                        event.preventDefault();
+                        setSelectedStrokeId(stroke.id);
+                        setSelectedBurrowUid("");
+                        setSelectedMemoId("");
+                        setSelectedGroupUids([]);
+                      }
+                    }}
+                    onPointerDown={(event) => selectStroke(event, stroke)}
+                    points={stroke.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                    role="button"
+                    tabIndex={mapMode === "select" && !isReadOnly ? 0 : -1}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+              </svg>
 
               {data.memos.map((memo) =>
                 editingMemoId === memo.id ? (
@@ -2307,14 +2553,29 @@ function BurrowApp() {
             <div className="map-legend" aria-label="地図記号の凡例">
               <span className="legend-pair"><SexMarker registered={false} sex="F" status="none" /> F（丸）</span>
               <span className="legend-pair"><SexMarker registered={false} sex="M" status="none" /> M（四角）</span>
-              <span className="legend-pair"><span className="status-swatch status-none" /> 未登録・未装着</span>
+              <span className="legend-pair"><span className="status-swatch status-none" /> 未登録</span>
               <span className="legend-pair"><span className="status-swatch status-attached" /> 装着済</span>
               <span className="legend-pair"><span className="status-swatch status-recovered" /> 回収済</span>
             </div>
           </section>
 
           <aside className="editor-panel" aria-label="情報入力">
-            {selectedMemo ? (
+            {selectedStroke ? (
+              <>
+                <div className="editor-heading">
+                  <div>
+                    <p className="eyebrow">選択中の線</p>
+                    <h2>線オブジェクト</h2>
+                  </div>
+                  <button className="danger-button" disabled={isReadOnly} type="button" onClick={deleteSelectedStroke}>
+                    削除
+                  </button>
+                </div>
+                <p className="field-note">
+                  選択中の線は赤色で表示されています。削除ボタン、またはキーボードのDeleteキーで線全体を削除できます。
+                </p>
+              </>
+            ) : selectedMemo ? (
               <>
                 <div className="editor-heading">
                   <div>
@@ -2476,16 +2737,26 @@ function BurrowApp() {
           </aside>
         </div>
 
-        <section className="list-panel" aria-label="巣穴一覧">
+        {burrowListOpen ? (
+        <div className="utility-overlay" role="presentation">
+        <section aria-labelledby="burrow-list-title" aria-modal="true" className="list-panel list-dialog" role="dialog">
           <div className="list-heading">
             <div>
-              <h2>巣穴一覧</h2>
+              <h2 id="burrow-list-title">巣穴一覧</h2>
               <span>
                 {normalizedSearch || hasListFilters
                   ? `${filteredBurrows.length} / ${data.burrows.length}件`
                   : `${data.burrows.length}件`}
               </span>
             </div>
+            <button
+              aria-label="巣穴一覧を閉じる"
+              className="dialog-close-button"
+              onClick={() => setBurrowListOpen(false)}
+              type="button"
+            >
+              閉じる
+            </button>
             <button
               className="filter-reset-button"
               disabled={!hasListFilters && burrowSortKey === "label-asc" && filterMatchMode === "and"}
@@ -2629,6 +2900,7 @@ function BurrowApp() {
                     onClick={() => {
                       setSelectedBurrowUid(burrow.uid);
                       setSelectedMemoId("");
+                      setSelectedStrokeId("");
                     }}
                   >
                     <td><strong>{burrow.label}</strong></td>
@@ -2646,8 +2918,20 @@ function BurrowApp() {
             </table>
           </div>
         </section>
+        </div>
+        ) : null}
+
+        <section className="print-target-list" aria-label="装着・回収対象一覧">
+          <h2>装着・回収対象一覧</h2>
+          <div className="print-target-grid">
+            <PrintTargetTable rows={printTargets.attachment} title="装着対象" />
+            <PrintTargetTable rows={printTargets.recovery} title="回収対象" />
+          </div>
+        </section>
       </section>
       {editPasswordDialog}
+      {projectSettingsDialog}
+      {printChoiceDialog}
     </main>
   );
 }
@@ -2697,10 +2981,186 @@ function EditPasswordDialog({
   );
 }
 
+function ProjectSettingsDialog({
+  isReadOnly,
+  name,
+  note,
+  onClose,
+  onNameChange,
+  onNoteChange,
+}: {
+  isReadOnly: boolean;
+  name: string;
+  note: string;
+  onClose: () => void;
+  onNameChange: (name: string) => void;
+  onNoteChange: (note: string) => void;
+}) {
+  return (
+    <div className="utility-overlay" role="presentation">
+      <section aria-labelledby="project-settings-title" aria-modal="true" className="utility-dialog" role="dialog">
+        <div className="utility-dialog-heading">
+          <div>
+            <p className="eyebrow">選択中の区画</p>
+            <h2 id="project-settings-title">区画の設定</h2>
+          </div>
+          <button className="dialog-close-button" onClick={onClose} type="button">閉じる</button>
+        </div>
+        <label>
+          区画の名前
+          <input
+            autoFocus
+            onBlur={(event) => onNameChange(event.target.value.trim() || "名称未設定")}
+            onChange={(event) => onNameChange(event.target.value)}
+            readOnly={isReadOnly}
+            value={name}
+          />
+        </label>
+        <label>
+          区画メモ
+          <textarea
+            maxLength={1200}
+            onChange={(event) => onNoteChange(event.target.value)}
+            placeholder="例：バイオロギング用の区画"
+            readOnly={isReadOnly}
+            rows={6}
+            value={note}
+          />
+        </label>
+        {isReadOnly ? <p className="field-note">編集する場合は、先に編集モードを開始してください。</p> : null}
+      </section>
+    </div>
+  );
+}
+
+function PrintChoiceDialog({
+  onCancel,
+  onSelect,
+}: {
+  onCancel: () => void;
+  onSelect: (mode: PrintMode) => void;
+}) {
+  return (
+    <div className="utility-overlay" role="presentation">
+      <section aria-labelledby="print-choice-title" aria-modal="true" className="utility-dialog print-choice-dialog" role="dialog">
+        <div className="utility-dialog-heading">
+          <div>
+            <p className="eyebrow">PDF出力</p>
+            <h2 id="print-choice-title">出力内容を選択</h2>
+          </div>
+          <button className="dialog-close-button" onClick={onCancel} type="button">閉じる</button>
+        </div>
+        <div className="print-choice-actions">
+          <button onClick={() => onSelect("full")} type="button">
+            <strong>マップと一覧表</strong>
+            <span>地図と装着・回収対象の一覧を出力</span>
+          </button>
+          <button onClick={() => onSelect("map")} type="button">
+            <strong>マップ</strong>
+            <span>地図だけを出力</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PrintTargetTable({
+  rows,
+  title,
+}: {
+  rows: Array<{ burrowLabel: string; sex: Sex; individual: Individual }>;
+  title: string;
+}) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>巣穴ID</th>
+            <th>対象個体の雌雄</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={`${row.burrowLabel}-${row.sex}`}>
+              <td>{row.burrowLabel}</td>
+              <td>{row.sex}</td>
+            </tr>
+          ))}
+          {!rows.length ? (
+            <tr>
+              <td colSpan={2}>対象なし</td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
+function DeleteYearDialog({
+  message,
+  onCancel,
+  onPasswordChange,
+  onSubmit,
+  password,
+  submitting,
+  summary,
+}: {
+  message: string;
+  onCancel: () => void;
+  onPasswordChange: (password: string) => void;
+  onSubmit: (event: ReactFormEvent<HTMLFormElement>) => void;
+  password: string;
+  submitting: boolean;
+  summary: YearSummary;
+}) {
+  return (
+    <div className="edit-password-overlay" role="presentation">
+      <section
+        aria-labelledby="delete-year-title"
+        aria-modal="true"
+        className="edit-password-dialog delete-year-dialog"
+        role="alertdialog"
+      >
+        <p className="eyebrow delete-year-eyebrow">削除の確認</p>
+        <h2 id="delete-year-title">{summary.year}年ページを削除</h2>
+        <p className="delete-year-warning">
+          この年に含まれる{summary.projects}区画・巣穴{summary.burrows}件と地図の内容をすべて削除します。この操作は元に戻せません。
+        </p>
+        <form onSubmit={onSubmit}>
+          <label htmlFor="delete-year-password">確認のためパスワードを再入力</label>
+          <input
+            autoComplete="current-password"
+            autoFocus
+            id="delete-year-password"
+            onChange={(event) => onPasswordChange(event.target.value)}
+            placeholder="パスワードを入力"
+            type="password"
+            value={password}
+          />
+          {message ? <p className="password-error" role="alert">{message}</p> : null}
+          <div className="edit-password-actions">
+            <button className="edit-password-cancel" disabled={submitting} onClick={onCancel} type="button">
+              キャンセル
+            </button>
+            <button className="delete-year-confirm" disabled={!password || submitting} type="submit">
+              {submitting ? "確認中..." : "パスワードを確認して削除"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function YearSelection({
   endingEditing,
   isReadOnly,
   onCreate,
+  onDeleteRequest,
   onFinishEditing,
   onOpen,
   onRequestEditing,
@@ -2709,10 +3169,11 @@ function YearSelection({
   endingEditing: boolean;
   isReadOnly: boolean;
   onCreate: (year: number) => void;
+  onDeleteRequest: (summary: YearSummary) => void;
   onFinishEditing: () => Promise<void>;
   onOpen: (year: number) => void;
   onRequestEditing: () => void;
-  summaries: Array<{ year: number; projects: number; burrows: number; updatedAt: string }>;
+  summaries: YearSummary[];
 }) {
   const [yearValue, setYearValue] = useState(String(CURRENT_YEAR));
   const year = Number(yearValue);
@@ -2746,13 +3207,25 @@ function YearSelection({
 
         <div className="year-grid">
           {summaries.map((summary) => (
-            <button className="year-card" key={summary.year} onClick={() => onOpen(summary.year)} type="button">
-              <strong>{summary.year}<span>年</span></strong>
-              <span>{summary.projects}区画・巣穴{summary.burrows}件</span>
-              <small>
-                最終更新 {new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium" }).format(new Date(summary.updatedAt))}
-              </small>
-            </button>
+            <article className="year-card" key={summary.year}>
+              <button className="year-card-open" onClick={() => onOpen(summary.year)} type="button">
+                <strong>{summary.year}<span>年</span></strong>
+                <span>{summary.projects}区画・巣穴{summary.burrows}件</span>
+                <small>
+                  最終更新 {new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium" }).format(new Date(summary.updatedAt))}
+                </small>
+              </button>
+              {!isReadOnly ? (
+                <button
+                  aria-label={`${summary.year}年ページを削除`}
+                  className="year-delete-button"
+                  onClick={() => onDeleteRequest(summary)}
+                  type="button"
+                >
+                  年ページを削除
+                </button>
+              ) : null}
+            </article>
           ))}
         </div>
 

@@ -71,6 +71,98 @@ button {
   backdrop-filter: blur(3px);
 }
 
+.utility-overlay {
+  position: fixed;
+  z-index: 900;
+  inset: 0;
+  display: grid;
+  overflow: auto;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 29, 25, 0.52);
+  backdrop-filter: blur(3px);
+}
+
+.utility-dialog {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+  background: var(--paper);
+  box-shadow: 0 24px 70px rgba(20, 25, 21, 0.25);
+  flex-direction: column;
+  gap: 16px;
+}
+
+.utility-dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.utility-dialog-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 26px;
+}
+
+.dialog-close-button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 12px;
+  background: var(--field);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.dialog-close-button:hover {
+  border-color: var(--accent);
+  background: #f0f8f5;
+}
+
+.print-choice-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.print-choice-actions button {
+  display: flex;
+  min-height: 112px;
+  border: 1px solid #b8c8c1;
+  border-radius: 10px;
+  padding: 18px;
+  background: var(--field);
+  color: var(--ink);
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 7px;
+  text-align: left;
+}
+
+.print-choice-actions button:hover {
+  border-color: var(--accent);
+  background: #f0f8f5;
+}
+
+.print-choice-actions strong {
+  color: var(--accent-strong);
+  font-size: 17px;
+}
+
+.print-choice-actions span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .edit-password-dialog {
   width: min(430px, 100%);
   border: 1px solid var(--line);
@@ -147,6 +239,32 @@ button {
   color: var(--ink);
 }
 
+.delete-year-dialog {
+  border-color: rgba(161, 61, 54, 0.38);
+}
+
+.delete-year-dialog .delete-year-eyebrow {
+  color: var(--danger);
+}
+
+.delete-year-dialog .delete-year-warning {
+  border: 1px solid rgba(161, 61, 54, 0.24);
+  border-radius: 9px;
+  padding: 12px 13px;
+  background: rgba(161, 61, 54, 0.07);
+  color: #702b26;
+  font-weight: 700;
+}
+
+.edit-password-actions .delete-year-confirm {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
+.edit-password-actions .delete-year-confirm:hover:not(:disabled) {
+  background: #7f2f2a;
+}
+
 .year-shell {
   display: grid;
   min-height: 100vh;
@@ -204,13 +322,10 @@ button {
   min-height: 150px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 18px;
+  overflow: hidden;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
   background: var(--field);
   color: var(--ink);
-  text-align: left;
 }
 
 .year-card:hover {
@@ -220,25 +335,59 @@ button {
   transform: translateY(-1px);
 }
 
-.year-card strong {
+.year-card-open {
+  display: flex;
+  width: 100%;
+  min-height: 148px;
+  border: 0;
+  padding: 18px;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.year-card-open:hover {
+  background: #f0f8f5;
+}
+
+.year-card-open strong {
   color: var(--accent-strong);
   font-size: 34px;
   line-height: 1;
 }
 
-.year-card strong span {
+.year-card-open strong span {
   margin-left: 3px;
   font-size: 15px;
 }
 
-.year-card > span {
+.year-card-open > span {
   font-size: 14px;
   font-weight: 800;
 }
 
-.year-card small {
+.year-card-open small {
   color: var(--muted);
   font-size: 12px;
+}
+
+.year-delete-button {
+  min-height: 40px;
+  border: 0;
+  border-top: 1px solid rgba(161, 61, 54, 0.2);
+  padding: 8px 12px;
+  background: rgba(161, 61, 54, 0.06);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.year-delete-button:hover {
+  background: rgba(161, 61, 54, 0.14);
 }
 
 .year-create-form {
@@ -598,6 +747,7 @@ button:disabled {
   font-weight: 700;
 }
 
+.project-settings-button,
 .project-copy-button,
 .project-delete-button {
   min-height: 36px;
@@ -606,6 +756,15 @@ button:disabled {
   background: transparent;
   font-size: 12px;
   font-weight: 800;
+}
+
+.project-settings-button {
+  border: 1px solid var(--accent);
+  color: var(--accent-strong);
+}
+
+.project-settings-button:hover {
+  background: #e9f3f0;
 }
 
 .project-copy-button {
@@ -666,6 +825,11 @@ button:disabled {
 }
 
 .print-project-note {
+  display: none;
+}
+
+.print-project-note-panel,
+.print-target-list {
   display: none;
 }
 
@@ -905,6 +1069,34 @@ button:disabled {
   pointer-events: none;
 }
 
+.stroke-hit-layer {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.stroke-hit-layer polyline {
+  fill: none;
+  stroke: transparent;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 12px;
+  pointer-events: none;
+}
+
+.app-shell:not(.read-only) .paper-map.mode-select .stroke-hit-layer polyline {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+.stroke-hit-layer polyline:focus {
+  outline: none;
+}
+
 .map-memo {
   position: absolute;
   z-index: 2;
@@ -1141,6 +1333,13 @@ button:disabled {
 .list-panel {
   border-radius: 8px;
   padding: 18px;
+}
+
+.list-dialog {
+  width: min(1320px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--paper);
 }
 
 .editor-panel {
@@ -1649,6 +1848,24 @@ tbody tr.no-results:hover {
 }
 
 @media (max-width: 620px) {
+  .utility-overlay {
+    padding: 10px;
+  }
+
+  .utility-dialog,
+  .list-dialog {
+    max-height: calc(100vh - 20px);
+    padding: 16px;
+  }
+
+  .print-choice-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .list-dialog .list-heading {
+    flex-wrap: wrap;
+  }
+
   .year-shell {
     padding: 16px 12px;
   }
@@ -1852,7 +2069,9 @@ tbody tr.no-results:hover {
   .table-filters,
   .filter-reset-button,
   .match-mode-control,
-  .editor-panel {
+  .editor-panel,
+  .utility-overlay,
+  .edit-password-overlay {
     display: none !important;
   }
 
@@ -1864,16 +2083,13 @@ tbody tr.no-results:hover {
     text-align: right;
   }
 
-  .project-note {
+  .print-project-note-panel {
+    display: block;
     border: 1px solid var(--line);
     border-radius: 3px;
     max-height: 12mm;
     overflow: hidden;
     padding: 4px 6px;
-  }
-
-  .project-note label {
-    display: none;
   }
 
   .print-project-note {
@@ -1940,6 +2156,45 @@ tbody tr.no-results:hover {
     box-shadow: none;
   }
 
+  .print-target-list {
+    display: block;
+    break-before: page;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 10mm;
+  }
+
+  .print-target-list > h2 {
+    margin: 0 0 6mm;
+    font-size: 20px;
+  }
+
+  .print-target-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10mm;
+    align-items: start;
+  }
+
+  .print-target-grid h3 {
+    margin: 0 0 3mm;
+    color: var(--ink);
+    font-size: 16px;
+  }
+
+  .print-target-grid table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+
+  .print-target-grid th,
+  .print-target-grid td {
+    border: 1px solid var(--line);
+    padding: 5px 7px;
+    text-align: left;
+  }
+
   .list-heading {
     margin-bottom: 4px;
   }
@@ -1987,11 +2242,12 @@ tbody tr.no-results:hover {
 
   .print-mode-map .topbar,
   .print-mode-map .project-switcher,
-  .print-mode-map .project-note,
+  .print-mode-map .print-project-note-panel,
   .print-mode-map .summary-grid,
   .print-mode-map .map-toolbar,
   .print-mode-map .editor-panel,
-  .print-mode-map .list-panel {
+  .print-mode-map .list-panel,
+  .print-mode-map .print-target-list {
     display: none !important;
   }
 
