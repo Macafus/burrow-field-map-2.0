@@ -1,9 +1,9 @@
-const CACHE_NAME = "burrow-manager-offline-v8";
+const CACHE_NAME = "burrow-manager-offline-v9";
 const APP_SHELL = [
   "/",
   "/offline.html",
   "/manifest.webmanifest",
-  "/burrow-field-map-tab-icon-20260915-v2.ico",
+  "/favicon.ico",
   "/icon-192.png",
   "/icon-512.png",
   "/apple-touch-icon.png",
