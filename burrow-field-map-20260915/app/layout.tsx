@@ -28,12 +28,12 @@ export default function RootLayout({
     <html lang="ja">
       <head>
         <link
-          href="/burrow-field-map-tab-icon-20260915-v2.ico"
+          href="/favicon.ico?v=20260915-3"
           rel="icon"
           sizes="64x64"
           type="image/x-icon"
         />
-        <link href="/burrow-field-map-tab-icon-20260915-v2.ico" rel="shortcut icon" />
+        <link href="/favicon.ico?v=20260915-3" rel="shortcut icon" />
         <link href="/apple-touch-icon.png" rel="apple-touch-icon" sizes="180x180" />
       </head>
       <body>{children}</body>
