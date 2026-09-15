@@ -7,11 +7,6 @@ const description = "手書き地図を編集し、巣穴ごとのF・M個体と
 export const metadata: Metadata = {
   title,
   description,
-  icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
-    apple: "/apple-touch-icon.png",
-  },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
