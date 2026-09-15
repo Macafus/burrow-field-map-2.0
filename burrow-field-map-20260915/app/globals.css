@@ -2394,12 +2394,19 @@ tbody tr.no-results:hover {
   }
 
   .print-mode-full .workspace {
-    display: block;
-    position: relative;
+    display: grid;
+    position: static;
     height: auto;
     max-height: none;
     min-height: 190mm;
     overflow: visible;
+    grid-template-columns: minmax(0, 1fr) 43mm;
+    grid-template-rows: 9mm auto;
+    grid-template-areas:
+      "meta meta"
+      "map targets";
+    column-gap: 4mm;
+    row-gap: 1mm;
     break-after: auto;
     break-inside: auto;
   }
@@ -2417,10 +2424,8 @@ tbody tr.no-results:hover {
 
   .print-mode-full .main-grid {
     display: block;
-    position: absolute;
-    top: 10mm;
-    left: 0;
-    width: calc(100% - 47mm);
+    position: static;
+    width: auto;
     height: 175mm;
     max-height: 175mm;
     min-height: 0;
@@ -2463,7 +2468,7 @@ tbody tr.no-results:hover {
 
   .print-mode-full .print-target-list {
     display: block;
-    width: 43mm;
+    width: auto;
     height: auto;
     min-height: 0;
     overflow: visible;
@@ -2471,7 +2476,7 @@ tbody tr.no-results:hover {
     border-radius: 0;
     padding: 1.5mm;
     grid-area: targets;
-    margin: 1mm 0 0 auto;
+    margin: 0;
     break-before: auto;
     break-inside: auto;
   }
@@ -2503,7 +2508,20 @@ tbody tr.no-results:hover {
   }
 
   .print-mode-full .print-target-grid tr {
-    break-inside: avoid;
+    break-inside: avoid-page !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid;
+  }
+
+  .print-mode-full .print-target-grid .print-target-row-group {
+    break-inside: avoid-page !important;
+    page-break-inside: avoid !important;
+    -webkit-column-break-inside: avoid;
+  }
+
+  .print-mode-full .print-target-grid th,
+  .print-mode-full .print-target-grid td {
+    break-inside: avoid-page;
     page-break-inside: avoid;
   }
 

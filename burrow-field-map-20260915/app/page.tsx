@@ -3165,20 +3165,22 @@ function PrintTargetTable({
             <th>リング番号</th>
           </tr>
         </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={`${row.burrowLabel}-${row.sex}`}>
+        {rows.map((row) => (
+          <tbody className="print-target-row-group" key={`${row.burrowLabel}-${row.sex}`}>
+            <tr>
               <td>{row.burrowLabel}</td>
               <td>{row.sex}</td>
               <td>{row.individual.registered ? row.individual.ringNumber.trim() : ""}</td>
             </tr>
-          ))}
-          {!rows.length ? (
+          </tbody>
+        ))}
+        {!rows.length ? (
+          <tbody className="print-target-row-group">
             <tr>
               <td colSpan={3}>対象なし</td>
             </tr>
-          ) : null}
-        </tbody>
+          </tbody>
+        ) : null}
       </table>
     </section>
   );
