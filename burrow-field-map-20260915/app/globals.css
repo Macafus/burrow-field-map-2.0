@@ -1994,7 +1994,21 @@ tbody tr.no-results:hover {
   }
 
   .year-heading h1 {
-    font-size: 30px;
+    font-size: clamp(26px, 8vw, 30px);
+  }
+
+  .year-heading {
+    gap: 10px;
+  }
+
+  .year-heading > div {
+    min-width: 0;
+  }
+
+  .year-heading .read-only-button {
+    flex: 0 0 auto;
+    padding-inline: 10px;
+    white-space: nowrap;
   }
 
   .year-grid {
@@ -2122,9 +2136,9 @@ tbody tr.no-results:hover {
   }
 
   .tool-segments button:last-child {
-    border-right: 0;
+    border-right: 1px solid var(--line);
     border-bottom: 0;
-    grid-column: 1 / -1;
+    grid-column: 1;
   }
 
   .tool-segments button:nth-child(2n) {
