@@ -28,7 +28,7 @@ type ListFilters = {
   recoveredFrom: string;
   recoveredTo: string;
 };
-type SummaryHighlightFilter = "female" | "male" | "installed" | "recovered" | "unrecovered";
+type SummaryHighlightFilter = "total" | "female" | "male" | "installed" | "recovered" | "unrecovered";
 
 type Individual = {
   registered: boolean;
@@ -486,6 +486,9 @@ const getSearchableDateTokens = (date: string) => {
 };
 
 const burrowMatchesSummaryHighlight = (burrow: Burrow, filter: SummaryHighlightFilter) => {
+  if (filter === "total") {
+    return (["F", "M"] as Sex[]).some((sex) => burrow.individuals[sex].registered);
+  }
   if (filter === "female") {
     return burrow.individuals.F.registered;
   }
@@ -2343,7 +2346,12 @@ function BurrowApp() {
 
         <section className="summary-grid" aria-label="サマリー">
           <Summary label="巣穴数" value={summary.burrows} />
-          <Summary label="合計個体数" value={summary.total} />
+          <Summary
+            active={summaryHighlightIsActive("total")}
+            label="合計個体数"
+            onClick={() => toggleSummaryHighlight("total")}
+            value={summary.total}
+          />
           <Summary
             active={summaryHighlightIsActive("female")}
             label="F"
