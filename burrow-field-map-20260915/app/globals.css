@@ -2395,18 +2395,13 @@ tbody tr.no-results:hover {
 
   .print-mode-full .workspace {
     display: block;
+    position: relative;
     height: auto;
     max-height: none;
     min-height: 190mm;
     overflow: visible;
     break-after: auto;
     break-inside: auto;
-  }
-
-  .print-mode-full .workspace::after {
-    display: block;
-    clear: both;
-    content: "";
   }
 
   .print-mode-full .print-meta {
@@ -2422,15 +2417,18 @@ tbody tr.no-results:hover {
 
   .print-mode-full .main-grid {
     display: block;
+    position: absolute;
+    top: 10mm;
+    left: 0;
     width: calc(100% - 47mm);
     height: 175mm;
     max-height: 175mm;
     min-height: 0;
-    float: left;
+    float: none;
     overflow: hidden;
     grid-area: map;
     align-self: start;
-    margin-top: 1mm;
+    margin-top: 0;
   }
 
   .print-mode-full .map-panel {
