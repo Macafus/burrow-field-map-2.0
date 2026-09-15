@@ -2384,30 +2384,29 @@ tbody tr.no-results:hover {
 
   .print-mode-full {
     width: 100%;
-    height: 206mm;
-    max-height: 206mm;
-    min-height: 0;
-    overflow: hidden;
+    height: auto;
+    max-height: none;
+    min-height: 206mm;
+    overflow: visible;
     padding: 8mm;
-    break-after: avoid;
-    break-inside: avoid;
+    break-after: auto;
+    break-inside: auto;
   }
 
   .print-mode-full .workspace {
-    display: grid;
-    height: 190mm;
-    max-height: 190mm;
-    min-height: 0;
-    overflow: hidden;
-    grid-template-columns: minmax(0, 1fr) 43mm;
-    grid-template-rows: 9mm minmax(0, 1fr);
-    grid-template-areas:
-      "meta meta"
-      "map targets";
-    column-gap: 4mm;
-    row-gap: 1mm;
-    break-after: avoid;
-    break-inside: avoid;
+    display: block;
+    height: auto;
+    max-height: none;
+    min-height: 190mm;
+    overflow: visible;
+    break-after: auto;
+    break-inside: auto;
+  }
+
+  .print-mode-full .workspace::after {
+    display: block;
+    clear: both;
+    content: "";
   }
 
   .print-mode-full .print-meta {
@@ -2423,10 +2422,15 @@ tbody tr.no-results:hover {
 
   .print-mode-full .main-grid {
     display: block;
-    height: 100%;
+    width: calc(100% - 47mm);
+    height: 175mm;
+    max-height: 175mm;
     min-height: 0;
+    float: left;
     overflow: hidden;
     grid-area: map;
+    align-self: start;
+    margin-top: 1mm;
   }
 
   .print-mode-full .map-panel {
@@ -2461,15 +2465,17 @@ tbody tr.no-results:hover {
 
   .print-mode-full .print-target-list {
     display: block;
-    height: 100%;
+    width: 43mm;
+    height: auto;
     min-height: 0;
-    overflow: hidden;
+    overflow: visible;
     border: 0;
     border-radius: 0;
     padding: 1.5mm;
     grid-area: targets;
+    margin: 1mm 0 0 auto;
     break-before: auto;
-    break-inside: avoid;
+    break-inside: auto;
   }
 
   .print-mode-full .print-target-list > h2 {
@@ -2478,8 +2484,28 @@ tbody tr.no-results:hover {
   }
 
   .print-mode-full .print-target-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 1mm;
+    grid-template-columns: 1fr;
+    gap: 2mm;
+  }
+
+  .print-mode-full .print-target-grid > section,
+  .print-mode-full .print-target-grid table,
+  .print-mode-full .print-target-grid tbody {
+    break-inside: auto;
+  }
+
+  .print-mode-full .print-target-grid h3,
+  .print-mode-full .print-target-grid thead {
+    break-after: avoid;
+  }
+
+  .print-mode-full .print-target-grid thead {
+    display: table-header-group;
+  }
+
+  .print-mode-full .print-target-grid tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .print-mode-full .print-target-grid h3 {
@@ -2496,6 +2522,21 @@ tbody tr.no-results:hover {
   .print-mode-full .print-target-grid td {
     padding: 2px 3px;
     overflow-wrap: anywhere;
+  }
+
+  .print-mode-full .print-target-grid th:nth-child(1),
+  .print-mode-full .print-target-grid td:nth-child(1) {
+    width: 32%;
+  }
+
+  .print-mode-full .print-target-grid th:nth-child(2),
+  .print-mode-full .print-target-grid td:nth-child(2) {
+    width: 18%;
+  }
+
+  .print-mode-full .print-target-grid th:nth-child(3),
+  .print-mode-full .print-target-grid td:nth-child(3) {
+    width: 50%;
   }
 
   .list-heading {

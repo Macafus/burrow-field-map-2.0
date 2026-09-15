@@ -3161,7 +3161,8 @@ function PrintTargetTable({
         <thead>
           <tr>
             <th>巣穴ID</th>
-            <th>対象個体の雌雄</th>
+            <th>雌雄</th>
+            <th>リング番号</th>
           </tr>
         </thead>
         <tbody>
@@ -3169,11 +3170,12 @@ function PrintTargetTable({
             <tr key={`${row.burrowLabel}-${row.sex}`}>
               <td>{row.burrowLabel}</td>
               <td>{row.sex}</td>
+              <td>{row.individual.registered ? row.individual.ringNumber.trim() : ""}</td>
             </tr>
           ))}
           {!rows.length ? (
             <tr>
-              <td colSpan={2}>対象なし</td>
+              <td colSpan={3}>対象なし</td>
             </tr>
           ) : null}
         </tbody>
