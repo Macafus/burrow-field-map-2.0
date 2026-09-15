@@ -2198,7 +2198,7 @@ tbody tr.no-results:hover {
 @media print {
   @page {
     size: A4 landscape;
-    margin: 0;
+    margin: 8mm;
   }
 
   * {
@@ -2386,9 +2386,9 @@ tbody tr.no-results:hover {
     width: 100%;
     height: auto;
     max-height: none;
-    min-height: 206mm;
+    min-height: 190mm;
     overflow: visible;
-    padding: 8mm;
+    padding: 0;
     break-after: auto;
     break-inside: auto;
   }
@@ -2497,6 +2497,7 @@ tbody tr.no-results:hover {
   .print-mode-full .print-target-grid h3,
   .print-mode-full .print-target-grid thead {
     break-after: avoid;
+    page-break-after: avoid;
   }
 
   .print-mode-full .print-target-grid thead {
@@ -2572,10 +2573,10 @@ tbody tr.no-results:hover {
 
   .print-mode-map {
     width: 100%;
-    height: 200mm;
+    height: 194mm;
     min-height: auto;
     overflow: hidden;
-    padding: 8mm;
+    padding: 0;
   }
 
   .print-mode-map .workspace {
